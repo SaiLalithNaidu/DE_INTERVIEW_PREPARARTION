@@ -1,0 +1,29 @@
+{
+  "name": "data-engineer-interview-prep",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "postinstall": "node -e \"const fs=require('fs'); const p='node_modules/rollup/dist/native.js'; if(fs.existsSync(p)){let c=fs.readFileSync(p,'utf8'); if(!c.includes('@rollup/wasm-node/dist/native.js')){c=c.replace(/const nativeModule = requireWithFriendlyError\\([\\s\\S]*?\\);/, 'let nativeModule; try { nativeModule = requireWithFriendlyError(existsSync(path.join(__dirname, localName)) ? localName : \\`@rollup/rollup-\\${packageBase}\\`); } catch(e) { nativeModule = require(\\'@rollup/wasm-node/dist/native.js\\'); }'); fs.writeFileSync(p, c); }}\""
+  },
+  "dependencies": {
+    "@rollup/wasm-node": "^4.68.2",
+    "canvas-confetti": "^1.9.4",
+    "lucide-react": "^1.16.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.28.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "vite": "^6.0.1"
+  },
+  "overrides": {
+    "rollup": "npm:@rollup/wasm-node"
+  }
+}
