@@ -25,6 +25,7 @@ import confetti from 'canvas-confetti';
 import InfographicViewer from './InfographicViewer';
 
 const PAGE_SIZE = 10;
+const TEXT_ANSWER_SECTION_IDS = new Set(['scenario', 'projects', 'production', 'aws']);
 
 const DIFFICULTY_WEIGHTS = {
   Basics: 1,
@@ -398,6 +399,10 @@ export default function SectionQuestionsView({
               const showDetails = Boolean(expandedDetailsMap[q.id]);
               const hasCode = Boolean(q.example || q.code);
               const codeSnippet = q.example || q.code || '';
+              const isTextAnswerSection = TEXT_ANSWER_SECTION_IDS.has(section.id);
+              const hasOptionalDetails = Boolean(q.explanation || hasCode || q.takeaways?.length);
+              const showDetailsToggle = hasOptionalDetails && (!q.answerFormat || hasCode);
+              const answerText = q.shortAnswer || q.explanation || 'Answer coming soon.';
 
               return (
                 <article
@@ -438,27 +443,44 @@ export default function SectionQuestionsView({
                     </div>
                   </header>
 
-                  {/* Accordion Body: Displays corresponding image directly below question */}
+                  {/* Text-only sections keep the answer directly below the question. */}
                   {isExpanded && (
                     <div className="accordion-item-body">
-                      {/* Corresponding Image / Infographic Container */}
-                      <div className="accordion-image-wrapper">
-                        <InfographicViewer question={q} />
-                      </div>
+                      {isTextAnswerSection ? (
+                        <section className="text-answer-card" style={{ '--answer-accent': section.color || '#4f46e5' }}>
+                          <div className="text-answer-heading">
+                            <div className="text-answer-icon"><FileText size={18} /></div>
+                            <div>
+                              <span>ANSWER</span>
+                              <h3>Clear explanation</h3>
+                            </div>
+                          </div>
+                          <div className="text-answer-copy">
+                            {answerText.split(/\n\n+/).map((paragraph, paragraphIndex) => (
+                              <p key={paragraphIndex}>{paragraph}</p>
+                            ))}
+                          </div>
+                        </section>
+                      ) : (
+                        <div className="accordion-image-wrapper">
+                          <InfographicViewer question={q} />
+                        </div>
+                      )}
 
-                      {/* Action Bar Below Image: Bookmark + Complete + Details Toggle */}
+                      {/* Keep study actions directly below the answer or infographic. */}
                       <div className="accordion-bottom-actions">
                         <div className="actions-left-group">
-                          {/* Toggle optional details: Text Explanation & Code */}
-                          <button
-                            type="button"
-                            className={`btn-toggle-details ${showDetails ? 'active' : ''}`}
-                            onClick={(e) => toggleDetails(q.id, e)}
-                            title="Toggle detailed explanation & code snippet"
-                          >
-                            {showDetails ? <EyeOff size={14} /> : <Eye size={14} />}
-                            <span>{showDetails ? "Hide Explanation & Code" : "Show Explanation & Code"}</span>
-                          </button>
+                          {showDetailsToggle && (
+                            <button
+                              type="button"
+                              className={`btn-toggle-details ${showDetails ? 'active' : ''}`}
+                              onClick={(e) => toggleDetails(q.id, e)}
+                              title="Toggle detailed explanation & code snippet"
+                            >
+                              {showDetails ? <EyeOff size={14} /> : <Eye size={14} />}
+                              <span>{showDetails ? "Hide Explanation & Code" : "Show Explanation & Code"}</span>
+                            </button>
+                          )}
                         </div>
 
                         <div className="actions-right-group">

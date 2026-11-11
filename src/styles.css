@@ -5070,6 +5070,65 @@ input, select, textarea {
   margin-bottom: 14px;
 }
 
+.text-answer-card {
+  margin-bottom: 14px;
+  padding: 20px 22px;
+  border: 1px solid color-mix(in srgb, var(--answer-accent) 18%, #e2e8f0);
+  border-left: 4px solid var(--answer-accent);
+  border-radius: 14px;
+  background: linear-gradient(145deg, #ffffff 0%, #f8fafc 100%);
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.045);
+}
+
+.text-answer-heading {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin-bottom: 12px;
+}
+
+.text-answer-icon {
+  display: flex;
+  flex: 0 0 36px;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  color: var(--answer-accent);
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--answer-accent) 10%, white);
+}
+
+.text-answer-heading span {
+  display: block;
+  color: var(--answer-accent);
+  font-size: 0.64rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+.text-answer-heading h3 {
+  margin: 3px 0 0;
+  color: #1e293b;
+  font-size: 0.96rem;
+  font-weight: 750;
+}
+
+.text-answer-copy {
+  max-width: 1000px;
+  color: #334155;
+  font-size: 0.94rem;
+  line-height: 1.75;
+}
+
+.text-answer-copy p {
+  margin: 0;
+}
+
+.text-answer-copy p + p {
+  margin-top: 10px;
+}
+
 /* Bottom Action Bar */
 .accordion-bottom-actions {
   display: flex;

@@ -1,5 +1,11 @@
 // Seed data for Data Engineer Interview Prep
 // Covers Python, SQL, PySpark, Scenario-Based, Projects, AWS & Tools, etc.
+import {
+  ADDITIONAL_QUESTIONS,
+  ADDITIONAL_SECTIONS,
+  ADDITIONAL_TOPICS
+} from './additionalContent.js';
+import CORE_QUESTION_ORDER from './coreQuestionOrder.json';
 
 export const SEED_SECTIONS = [
   { id: 'dashboard', name: 'Dashboard', icon: 'Home', isNav: true, isStudySection: false },
@@ -7,6 +13,7 @@ export const SEED_SECTIONS = [
   { id: 'sql', name: 'SQL', icon: 'Database', isNav: true, isStudySection: true, color: '#10b981' },
   { id: 'pyspark', name: 'PySpark', icon: 'Sparkles', isNav: true, isStudySection: true, color: '#f59e0b' },
   { id: 'scenario', name: 'Scenario Based', icon: 'GitFork', isNav: true, isStudySection: true, color: '#ec4899' },
+  ...ADDITIONAL_SECTIONS,
   { id: 'projects', name: 'Projects', icon: 'FolderGit2', isNav: true, isStudySection: true, color: '#8b5cf6' },
   { id: 'aws', name: 'AWS & Tools', icon: 'Cloud', isNav: true, isStudySection: true, color: '#06b6d4' },
   { id: 'mock', name: 'Mock Interview', icon: 'Video', isNav: true, isStudySection: false },
@@ -46,10 +53,61 @@ export const SEED_TOPICS = [
   // AWS & Tools topics
   { id: 'aws-storage', sectionId: 'aws', name: 'S3 & Glue' },
   { id: 'aws-warehouse', sectionId: 'aws', name: 'Redshift & Snowflake' },
-  { id: 'aws-orchestration', sectionId: 'aws', name: 'Airflow & Orchestration' }
+  { id: 'aws-orchestration', sectionId: 'aws', name: 'Airflow & Orchestration' },
+  ...ADDITIONAL_TOPICS
 ];
 
-export const SEED_QUESTIONS = [
+const CORE_QUESTION_ORDER_ALIASES = new Map([
+  ['what is a generator in python', 'what are generators'],
+  ['iterable vs iterator vs generator', 'difference between iterable iterator and generator'],
+  ['what is a python module and package', 'what is the difference between a module and a package'],
+  ['what is exception handling in python', 'what is exception handling'],
+  ['explain list comprehension with an example', 'what is list comprehension'],
+  ['what are sql window functions and how do row number rank and dense rank differ', 'difference between row number rank and dense rank'],
+  ['how do you optimize a slow running sql query on a big data warehouse snowflake redshift', 'what is query optimization'],
+  ['what is the difference between rdd dataframe and dataset in apache spark', 'difference between rdd and dataframe'],
+  ['how do you detect and resolve data skew in pyspark', 'how do you resolve data skew']
+]);
+
+function normalizeQuestionText(question) {
+  return (question || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+function orderCoreQuestionsByWorkbook(questions) {
+  const reordered = [...questions];
+
+  for (const [sectionId, workbookQuestions] of Object.entries(CORE_QUESTION_ORDER)) {
+    const rankByQuestion = new Map(
+      workbookQuestions.map((question, index) => [normalizeQuestionText(question), index])
+    );
+    const questionIndexes = [];
+    const sectionQuestions = [];
+
+    reordered.forEach((question, index) => {
+      if (question.sectionId !== sectionId) return;
+      questionIndexes.push(index);
+      sectionQuestions.push({ question, originalIndex: sectionQuestions.length });
+    });
+
+    sectionQuestions.sort((left, right) => {
+      const leftKey = normalizeQuestionText(left.question.question);
+      const rightKey = normalizeQuestionText(right.question.question);
+      const leftOrderKey = rankByQuestion.has(leftKey) ? leftKey : CORE_QUESTION_ORDER_ALIASES.get(leftKey);
+      const rightOrderKey = rankByQuestion.has(rightKey) ? rightKey : CORE_QUESTION_ORDER_ALIASES.get(rightKey);
+      const leftRank = rankByQuestion.get(leftOrderKey) ?? Number.MAX_SAFE_INTEGER;
+      const rightRank = rankByQuestion.get(rightOrderKey) ?? Number.MAX_SAFE_INTEGER;
+      return leftRank - rightRank || left.originalIndex - right.originalIndex;
+    });
+
+    questionIndexes.forEach((targetIndex, index) => {
+      reordered[targetIndex] = sectionQuestions[index].question;
+    });
+  }
+
+  return reordered;
+}
+
+export const SEED_QUESTIONS = orderCoreQuestionsByWorkbook([
   // 1. PYTHON QUESTIONS
   {
     id: 'py-q1',
@@ -1138,10 +1196,33 @@ validate_task = PythonOperator(
     active: true,
     createdAt: '2026-03-01T10:00:00Z',
     updatedAt: '2026-03-01T10:00:00Z'
-  }
-];
+  },
+  ...ADDITIONAL_QUESTIONS
+]);
 
-// Initialize LocalStorage with seed data if not present
+const CURRENT_SEED_VERSION = 7;
+
+function readStoredArray(key, fallback) {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(key) || 'null');
+    return Array.isArray(parsed) ? parsed : fallback;
+  } catch (error) {
+    return fallback;
+  }
+}
+
+function mergeMissingRecords(storedRecords, seedRecords, sameRecord) {
+  const merged = [...storedRecords];
+  for (const seedRecord of seedRecords) {
+    if (!merged.some((record) => sameRecord(record, seedRecord))) {
+      merged.push(seedRecord);
+    }
+  }
+  return merged;
+}
+
+// Initialize LocalStorage on first use and merge the new question-bank content
+// once for existing users, preserving their edits, progress, and bookmarks.
 export function initializeStorageIfNeeded() {
   const initialized = localStorage.getItem('dep_initialized');
   if (!initialized) {
@@ -1152,5 +1233,62 @@ export function initializeStorageIfNeeded() {
     localStorage.setItem('dep_progress', JSON.stringify([]));
     localStorage.setItem('dep_initialized', 'true');
   }
+
+  const storedVersion = Number(localStorage.getItem('dep_seed_version') || 0) || 0;
+  if (storedVersion < CURRENT_SEED_VERSION) {
+    const sections = readStoredArray('dep_sections', []);
+    for (const incoming of ADDITIONAL_SECTIONS) {
+      if (sections.some((existing) => existing.id === incoming.id)) continue;
+      const scenarioIndex = sections.findIndex((section) => section.id === 'scenario');
+      sections.splice(scenarioIndex >= 0 ? scenarioIndex + 1 : sections.length, 0, incoming);
+    }
+    const topics = mergeMissingRecords(
+      readStoredArray('dep_topics', []),
+      ADDITIONAL_TOPICS,
+      (existing, incoming) => existing.id === incoming.id
+    );
+    const mergedQuestions = mergeMissingRecords(
+      readStoredArray('dep_questions', []),
+      ADDITIONAL_QUESTIONS,
+      (existing, incoming) => existing.id === incoming.id || (
+        existing.sectionId === incoming.sectionId &&
+        normalizeQuestionText(incoming.question) &&
+        normalizeQuestionText(existing.question) === normalizeQuestionText(incoming.question)
+      )
+    );
+    const additionsById = new Map(ADDITIONAL_QUESTIONS.map((question) => [question.id, question]));
+    const additionsByQuestion = new Map(ADDITIONAL_QUESTIONS.map((question) => [
+      `${question.sectionId}:${normalizeQuestionText(question.question)}`,
+      question
+    ]));
+    const updatedQuestions = mergedQuestions.map((question) => {
+      const source = additionsById.get(question.id) || additionsByQuestion.get(
+        `${question.sectionId}:${normalizeQuestionText(question.question)}`
+      );
+      if (!source) return question;
+      const textQuestion = { ...question };
+      delete textQuestion.imageId;
+      return {
+        ...textQuestion,
+        shortAnswer: source.shortAnswer,
+        answerFormat: 'text',
+        infographicData: null
+      };
+    });
+    const questions = orderCoreQuestionsByWorkbook(updatedQuestions);
+
+    localStorage.setItem('dep_sections', JSON.stringify(sections));
+    localStorage.setItem('dep_topics', JSON.stringify(topics));
+    localStorage.setItem('dep_questions', JSON.stringify(questions));
+    localStorage.setItem('dep_seed_version', String(CURRENT_SEED_VERSION));
+  }
+
+  return {
+    sections: readStoredArray('dep_sections', SEED_SECTIONS),
+    topics: readStoredArray('dep_topics', SEED_TOPICS),
+    questions: readStoredArray('dep_questions', SEED_QUESTIONS),
+    bookmarks: readStoredArray('dep_bookmarks', ['py-q1']),
+    progress: readStoredArray('dep_progress', [])
+  };
 }
 

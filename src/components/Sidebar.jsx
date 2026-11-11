@@ -12,6 +12,7 @@ import {
   Settings, 
   Code2, 
   Layers,
+  Wrench,
   X
 } from 'lucide-react';
 
@@ -27,7 +28,8 @@ const ICON_MAP = {
   CheckCircle2,
   BarChart2,
   Settings,
-  Layers
+  Layers,
+  Wrench
 };
 
 export default function Sidebar({

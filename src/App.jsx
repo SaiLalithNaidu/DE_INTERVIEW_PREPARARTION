@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import SectionQuestionsView from './components/SectionQuestionsView';
@@ -11,7 +11,6 @@ import MockInterviewView from './components/MockInterviewView';
 import QuizView from './components/QuizView';
 
 import {
-  getStoredData,
   setStoredData,
   STORAGE_KEYS,
   toggleBookmarkInStore,
@@ -26,17 +25,15 @@ import {
 } from './data/seed';
 
 export default function App() {
-  // Ensure seed data is populated on first load
-  useEffect(() => {
-    initializeStorageIfNeeded();
-  }, []);
+  // Initialize or migrate storage before reading application state.
+  const [initialData] = useState(() => initializeStorageIfNeeded());
 
   // Application State backed by localStorage
-  const [sections, setSections] = useState(() => getStoredData(STORAGE_KEYS.SECTIONS, SEED_SECTIONS));
-  const [topics, setTopics] = useState(() => getStoredData(STORAGE_KEYS.TOPICS, SEED_TOPICS));
-  const [questions, setQuestions] = useState(() => getStoredData(STORAGE_KEYS.QUESTIONS, SEED_QUESTIONS));
-  const [bookmarks, setBookmarks] = useState(() => getStoredData(STORAGE_KEYS.BOOKMARKS, ['py-q1']));
-  const [progress, setProgress] = useState(() => getStoredData(STORAGE_KEYS.PROGRESS, []));
+  const [sections, setSections] = useState(initialData.sections);
+  const [topics, setTopics] = useState(initialData.topics);
+  const [questions, setQuestions] = useState(initialData.questions);
+  const [bookmarks, setBookmarks] = useState(initialData.bookmarks);
+  const [progress, setProgress] = useState(initialData.progress);
 
   // Navigation State
   const [currentRoute, setCurrentRoute] = useState('section-python'); // default starts directly in Python section as shown in screenshot

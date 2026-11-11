@@ -31,6 +31,8 @@ const ICON_MAP = {
   dashboard: Layers
 };
 
+const TEXT_ANSWER_SECTION_IDS = new Set(['scenario', 'projects', 'production', 'aws']);
+
 export default function Header({
   currentSection,
   globalSearchQuery,
@@ -58,6 +60,9 @@ export default function Header({
     }
     if (currentSection.id === 'admin') {
       return 'Add, edit, and manage interview questions by section and topic.';
+    }
+    if (TEXT_ANSWER_SECTION_IDS.has(currentSection.id)) {
+      return 'Read clear, question-specific answers and track your preparation.';
     }
     return 'Practice concept-wise questions with images and real-time explanations.';
   };
