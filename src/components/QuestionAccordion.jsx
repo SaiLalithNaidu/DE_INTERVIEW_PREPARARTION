@@ -193,7 +193,9 @@ export default function QuestionAccordion({
             <div className="tab-pane-fade tab-answer-content">
               <div className="answer-highlight-box">
                 <div className="highlight-tag">Concise Interview Answer</div>
-                <p className="answer-text">{activeQuestion.shortAnswer}</p>
+                <p className="answer-text">
+                  {activeQuestion.shortAnswer || activeQuestion.explanation || 'See the Explanation tab for full details.'}
+                </p>
               </div>
 
               {activeQuestion.difficulty && (

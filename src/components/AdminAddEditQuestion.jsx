@@ -1,16 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  ArrowLeft, 
-  Upload, 
-  Trash2, 
-  Image as ImageIcon, 
-  Bold, 
-  Italic, 
-  List, 
-  ListOrdered, 
-  Code, 
-  Link, 
-  Plus, 
+import {
+  ArrowLeft,
+  Upload,
+  Trash2,
+  Image as ImageIcon,
+  Bold,
+  Italic,
+  List,
+  ListOrdered,
+  Code,
+  Link,
+  Plus,
   X,
   CheckCircle2,
   AlertTriangle
@@ -25,13 +25,36 @@ export default function AdminAddEditQuestion({
   sections = [],
   topics = [],
   onSaveQuestion,
+  onAddTopic,
   onCancel
 }) {
   const isEditing = Boolean(editingQuestion);
 
-  // Form State
-  const [sectionId, setSectionId] = useState(editingQuestion?.sectionId || sections[0]?.id || 'python');
-  const [topicId, setTopicId] = useState(editingQuestion?.topicId || '');
+  // Available study sections (excluding Dashboard, Admin, etc.)
+  const studySections = React.useMemo(() => {
+    return sections.filter(s => s.isStudySection !== false && s.id !== 'dashboard' && s.id !== 'admin');
+  }, [sections]);
+
+  // Form State - Initialize sectionId to the first study section (e.g. 'python')
+  const [sectionId, setSectionId] = useState(() => {
+    if (editingQuestion?.sectionId) return editingQuestion.sectionId;
+    const firstStudy = sections.find(s => s.isStudySection !== false && s.id !== 'dashboard' && s.id !== 'admin');
+    return firstStudy ? firstStudy.id : 'python';
+  });
+
+  // Available topics for chosen section
+  const availableTopics = React.useMemo(() => {
+    return topics.filter(t => t.sectionId === sectionId);
+  }, [topics, sectionId]);
+
+  // Form State - Initialize topicId to the first available topic immediately on initial render
+  const [topicId, setTopicId] = useState(() => {
+    if (editingQuestion?.topicId) return editingQuestion.topicId;
+    const initialSec = editingQuestion?.sectionId || (sections.find(s => s.isStudySection !== false && s.id !== 'dashboard')?.id || 'python');
+    const matched = topics.filter(t => t.sectionId === initialSec);
+    return matched[0]?.id || '';
+  });
+
   const [questionText, setQuestionText] = useState(editingQuestion?.question || '');
   const [difficulty, setDifficulty] = useState(editingQuestion?.difficulty || 'Basics');
   const [shortAnswer, setShortAnswer] = useState(editingQuestion?.shortAnswer || '');
@@ -41,6 +64,10 @@ export default function AdminAddEditQuestion({
     editingQuestion?.takeaways?.length ? editingQuestion.takeaways : ['']
   );
 
+  // Inline topic creation state
+  const [showNewTopicModal, setShowNewTopicModal] = useState(false);
+  const [inlineTopicName, setInlineTopicName] = useState('');
+
   // Image State
   const [imageId, setImageId] = useState(editingQuestion?.imageId || null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState(null);
@@ -48,15 +75,35 @@ export default function AdminAddEditQuestion({
   const [errorMessage, setErrorMessage] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
-  // Available topics for chosen section
-  const availableTopics = topics.filter(t => t.sectionId === sectionId);
-
-  // Set default topic if not set
+  // Ensure topicId stays valid whenever section or availableTopics change
   useEffect(() => {
-    if (!topicId && availableTopics.length > 0) {
-      setTopicId(availableTopics[0].id);
+    if (availableTopics.length > 0) {
+      if (!availableTopics.some(t => t.id === topicId)) {
+        setTopicId(availableTopics[0].id);
+      }
+    } else {
+      setTopicId(`${sectionId}-general`);
     }
-  }, [sectionId, availableTopics, topicId]);
+  }, [availableTopics, topicId, sectionId]);
+
+  const handleSectionChange = (newSecId) => {
+    setSectionId(newSecId);
+    const newTopics = topics.filter(t => t.sectionId === newSecId);
+    setTopicId(newTopics[0]?.id || `${newSecId}-general`);
+  };
+
+  const handleCreateInlineTopic = (e) => {
+    e.preventDefault();
+    if (!inlineTopicName.trim()) return;
+    const id = `${sectionId}-${inlineTopicName.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
+    const newTopic = { id, sectionId, name: inlineTopicName.trim() };
+    if (onAddTopic) {
+      onAddTopic(newTopic);
+    }
+    setTopicId(id);
+    setInlineTopicName('');
+    setShowNewTopicModal(false);
+  };
 
   // Load existing image if editing
   useEffect(() => {
@@ -105,6 +152,25 @@ export default function AdminAddEditQuestion({
     setImageId(null);
   };
 
+  // Reset form to clean default state
+  const resetForm = () => {
+    const firstStudy = sections.find(s => s.isStudySection !== false && s.id !== 'dashboard' && s.id !== 'admin');
+    const defaultSecId = firstStudy ? firstStudy.id : 'python';
+    setSectionId(defaultSecId);
+    const matchedTopics = topics.filter(t => t.sectionId === defaultSecId);
+    setTopicId(matchedTopics[0]?.id || '');
+    setQuestionText('');
+    setDifficulty('Basics');
+    setShortAnswer('');
+    setExplanation('');
+    setExampleCode('');
+    setTakeaways(['']);
+    setImageId(null);
+    setImagePreviewUrl(null);
+    setImageFileToSave(null);
+    setErrorMessage('');
+  };
+
   // Takeaway bullet helpers
   const handleAddTakeaway = () => {
     setTakeaways(prev => [...prev, '']);
@@ -145,10 +211,11 @@ export default function AdminAddEditQuestion({
       setErrorMessage('Please enter the question text.');
       return;
     }
-    if (!shortAnswer.trim()) {
-      setErrorMessage('Please enter a short answer.');
-      return;
-    }
+    // Short answer is not mandatory if detailed explanation is provided
+    // if (!shortAnswer.trim() && !explanation.trim()) {
+    //   setErrorMessage('Please provide either a short answer or a detailed explanation.');
+    //   return;
+    // }
 
     setIsSaving(true);
     setErrorMessage('');
@@ -174,7 +241,9 @@ export default function AdminAddEditQuestion({
         explanation: explanation.trim(),
         example: exampleCode.trim(),
         code: exampleCode.trim(),
-        takeaways: cleanTakeaways.length > 0 ? cleanTakeaways : [shortAnswer.trim()],
+        takeaways: cleanTakeaways.length > 0
+          ? cleanTakeaways
+          : (shortAnswer.trim() ? [shortAnswer.trim()] : (explanation.trim() ? [explanation.trim().slice(0, 160)] : [])),
         imageId: finalImageId,
         active: editingQuestion ? editingQuestion.active : true,
         createdAt: editingQuestion?.createdAt || new Date().toISOString(),
@@ -183,12 +252,25 @@ export default function AdminAddEditQuestion({
         infographicData: finalImageId ? null : editingQuestion?.infographicData
       };
 
-      onSaveQuestion(questionData);
+      if (onSaveQuestion) {
+        onSaveQuestion(questionData);
+      }
+      resetForm();
+      if (onCancel) {
+        onCancel();
+      }
     } catch (err) {
       console.error('Failed to save question image to IndexedDB:', err);
       setErrorMessage('Error storing image in IndexedDB. Please try again.');
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleCancelAction = () => {
+    resetForm();
+    if (onCancel) {
+      onCancel();
     }
   };
 
@@ -204,10 +286,10 @@ export default function AdminAddEditQuestion({
             <span>/</span>
             <span className="current">{isEditing ? 'Edit Question' : 'Add Question'}</span>
           </div>
-          <button 
-            type="button" 
+          <button
+            type="button"
             className="btn-back-header"
-            onClick={onCancel}
+            onClick={handleCancelAction}
           >
             <ArrowLeft size={18} />
             <span>{isEditing ? 'Edit Question' : 'Add New Question'}</span>
@@ -229,31 +311,38 @@ export default function AdminAddEditQuestion({
         <div className="form-left-col">
           {/* Section & Topic Selection Row */}
           <div className="form-row-two-col">
-            <div className="form-group">
+            <div className="form-group flex-1">
               <label>Section *</label>
               <select
                 value={sectionId}
-                onChange={(e) => {
-                  setSectionId(e.target.value);
-                  setTopicId('');
-                }}
+                onChange={(e) => handleSectionChange(e.target.value)}
                 required
               >
-                {sections.filter(s => s.isStudySection !== false).map(s => (
+                {studySections.map(s => (
                   <option key={s.id} value={s.id}>{s.name}</option>
                 ))}
               </select>
             </div>
 
-            <div className="form-group">
-              <label>Topic *</label>
+            <div className="form-group flex-1">
+              <div className="label-with-action">
+                <label>Topic *</label>
+                <button
+                  type="button"
+                  className="btn-tiny-add-topic"
+                  onClick={() => setShowNewTopicModal(true)}
+                  title="Add a new topic for this section"
+                >
+                  + New Topic
+                </button>
+              </div>
               <select
                 value={topicId}
                 onChange={(e) => setTopicId(e.target.value)}
                 required
               >
                 {availableTopics.length === 0 ? (
-                  <option value="">(No specific topics)</option>
+                  <option value={`${sectionId}-general`}>General</option>
                 ) : (
                   availableTopics.map(t => (
                     <option key={t.id} value={t.id}>{t.name}</option>
@@ -292,13 +381,17 @@ export default function AdminAddEditQuestion({
 
           {/* Short Answer */}
           <div className="form-group">
-            <label>Answer (Short) *</label>
+            <div className="label-with-action">
+              <label>Answer (Short)</label>
+              <span className="text-subtle text-xs" style={{ fontWeight: 400 }}>
+                {explanation.trim() ? '(Optional when Explanation is provided)' : '* Required if no Explanation'}
+              </span>
+            </div>
             <textarea
               rows={3}
-              placeholder="High-level, crisp explanation suitable for a quick interview definition..."
+              placeholder="High-level, crisp explanation suitable for a quick interview definition (optional if detailed explanation is provided)..."
               value={shortAnswer}
               onChange={(e) => setShortAnswer(e.target.value)}
-              required
             />
           </div>
 
@@ -350,8 +443,8 @@ export default function AdminAddEditQuestion({
           <div className="form-group">
             <div className="label-with-action">
               <label>Key Interview Takeaways</label>
-              <button 
-                type="button" 
+              <button
+                type="button"
                 className="btn-add-bullet"
                 onClick={handleAddTakeaway}
               >
@@ -435,7 +528,7 @@ export default function AdminAddEditQuestion({
             <button
               type="button"
               className="btn-cancel-large"
-              onClick={onCancel}
+              onClick={handleCancelAction}
               disabled={isSaving}
             >
               Cancel
@@ -450,6 +543,39 @@ export default function AdminAddEditQuestion({
           </div>
         </div>
       </form>
+
+      {/* Inline Topic Creation Modal */}
+      {showNewTopicModal && (
+        <div className="modal-backdrop">
+          <div className="modal-dialog">
+            <div className="modal-header">
+              <h3>Add Topic to {studySections.find(s => s.id === sectionId)?.name || sectionId}</h3>
+              <button type="button" onClick={() => setShowNewTopicModal(false)}>×</button>
+            </div>
+            <form onSubmit={handleCreateInlineTopic} className="modal-form">
+              <div className="form-field">
+                <label>Topic Name *</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Partitioning, Indexing, Joins, Architecture"
+                  value={inlineTopicName}
+                  onChange={(e) => setInlineTopicName(e.target.value)}
+                  autoFocus
+                  required
+                />
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn-cancel" onClick={() => setShowNewTopicModal(false)}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn-submit">
+                  Add Topic
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

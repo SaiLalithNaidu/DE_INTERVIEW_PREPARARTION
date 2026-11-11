@@ -1,17 +1,28 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { 
-  Search, 
-  Filter, 
-  ChevronRight, 
-  ChevronDown, 
-  Bookmark, 
-  Check, 
-  PanelLeftClose, 
-  PanelLeftOpen 
+import {
+  Search,
+  Filter,
+  ChevronRight,
+  ChevronDown,
+  Bookmark,
+  Check,
+  PanelLeftClose,
+  PanelLeftOpen,
+  GripVertical,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown
 } from 'lucide-react';
 import QuestionAccordion from './QuestionAccordion';
 
 const PAGE_SIZE = 10;
+
+const DIFFICULTY_WEIGHTS = {
+  Basics: 1,
+  Intermediate: 2,
+  Advanced: 3,
+  Coding: 4
+};
 
 export default function SectionQuestionsView({
   section,
@@ -20,13 +31,19 @@ export default function SectionQuestionsView({
   bookmarks,
   progress,
   onToggleBookmark,
-  onToggleComplete
+  onToggleComplete,
+  onReorderQuestions
 }) {
   const [selectedTopicId, setSelectedTopicId] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [sortBy, setSortBy] = useState('custom'); // 'custom' | 'alpha-asc' | 'alpha-desc' | 'diff-asc' | 'diff-desc' | 'uncompleted' | 'bookmarked'
   const [currentPage, setCurrentPage] = useState(1);
   const [activeQuestionId, setActiveQuestionId] = useState(null);
   const [isLeftPanelOpen, setIsLeftPanelOpen] = useState(true);
+
+  // Drag and drop state
+  const [draggedQId, setDraggedQId] = useState(null);
+  const [dragOverQId, setDragOverQId] = useState(null);
 
   // Filter topics belonging to this section
   const sectionTopics = useMemo(() => {
@@ -59,30 +76,56 @@ export default function SectionQuestionsView({
     });
   }, [allQuestions, section.id, selectedTopicId, searchQuery]);
 
+  // Sorted questions based on sortBy selection
+  const sortedQuestions = useMemo(() => {
+    let result = [...filteredQuestions];
+    if (sortBy === 'alpha-asc') {
+      result.sort((a, b) => a.question.localeCompare(b.question));
+    } else if (sortBy === 'alpha-desc') {
+      result.sort((a, b) => b.question.localeCompare(a.question));
+    } else if (sortBy === 'diff-asc') {
+      result.sort((a, b) => (DIFFICULTY_WEIGHTS[a.difficulty] || 99) - (DIFFICULTY_WEIGHTS[b.difficulty] || 99));
+    } else if (sortBy === 'diff-desc') {
+      result.sort((a, b) => (DIFFICULTY_WEIGHTS[b.difficulty] || 99) - (DIFFICULTY_WEIGHTS[a.difficulty] || 99));
+    } else if (sortBy === 'uncompleted') {
+      result.sort((a, b) => {
+        const aDone = progress.includes(a.id) ? 1 : 0;
+        const bDone = progress.includes(b.id) ? 1 : 0;
+        return aDone - bDone;
+      });
+    } else if (sortBy === 'bookmarked') {
+      result.sort((a, b) => {
+        const aMark = bookmarks.includes(a.id) ? 0 : 1;
+        const bMark = bookmarks.includes(b.id) ? 0 : 1;
+        return aMark - bMark;
+      });
+    }
+    return result;
+  }, [filteredQuestions, sortBy, progress, bookmarks]);
+
   // Set default active question when list changes or loads
   useEffect(() => {
-    if (filteredQuestions.length > 0) {
-      // If current activeQuestionId is not in filtered list, pick the first
-      const exists = filteredQuestions.some(q => q.id === activeQuestionId);
+    if (sortedQuestions.length > 0) {
+      const exists = sortedQuestions.some(q => q.id === activeQuestionId);
       if (!exists) {
-        setActiveQuestionId(filteredQuestions[0].id);
+        setActiveQuestionId(sortedQuestions[0].id);
       }
     } else {
       setActiveQuestionId(null);
     }
-  }, [filteredQuestions, activeQuestionId]);
+  }, [sortedQuestions, activeQuestionId]);
 
   // Pagination calculations
-  const totalPages = Math.max(1, Math.ceil(filteredQuestions.length / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(sortedQuestions.length / PAGE_SIZE));
   const paginatedQuestions = useMemo(() => {
     const startIndex = (currentPage - 1) * PAGE_SIZE;
-    return filteredQuestions.slice(startIndex, startIndex + PAGE_SIZE);
-  }, [filteredQuestions, currentPage]);
+    return sortedQuestions.slice(startIndex, startIndex + PAGE_SIZE);
+  }, [sortedQuestions, currentPage]);
 
   // Find the currently active question object
   const activeQuestion = useMemo(() => {
-    return filteredQuestions.find(q => q.id === activeQuestionId) || paginatedQuestions[0] || null;
-  }, [filteredQuestions, activeQuestionId, paginatedQuestions]);
+    return sortedQuestions.find(q => q.id === activeQuestionId) || paginatedQuestions[0] || null;
+  }, [sortedQuestions, activeQuestionId, paginatedQuestions]);
 
   // Other questions in this paginated page to show below active question in accordion
   const subsequentQuestions = useMemo(() => {
@@ -97,9 +140,9 @@ export default function SectionQuestionsView({
     if (topicId === 'all') {
       return allQuestions.filter(q => q.sectionId === section.id && q.active !== false).length;
     }
-    return allQuestions.filter(q => 
-      q.sectionId === section.id && 
-      q.active !== false && 
+    return allQuestions.filter(q =>
+      q.sectionId === section.id &&
+      q.active !== false &&
       (q.topicId === topicId || q.difficulty?.toLowerCase() === topicId.toLowerCase())
     ).length;
   };
@@ -107,6 +150,65 @@ export default function SectionQuestionsView({
   const handleSelectQuestion = (q) => {
     setActiveQuestionId(q.id);
   };
+
+  // Drag and drop reordering handler
+  const handleDropQuestion = (targetQId) => {
+    if (!draggedQId || draggedQId === targetQId) {
+      setDraggedQId(null);
+      setDragOverQId(null);
+      return;
+    }
+
+    const currentList = [...sortedQuestions];
+    const sourceIdx = currentList.findIndex(q => q.id === draggedQId);
+    const targetIdx = currentList.findIndex(q => q.id === targetQId);
+
+    if (sourceIdx >= 0 && targetIdx >= 0) {
+      const [moved] = currentList.splice(sourceIdx, 1);
+      currentList.splice(targetIdx, 0, moved);
+
+      if (onReorderQuestions) {
+        onReorderQuestions(currentList);
+      }
+    }
+    setDraggedQId(null);
+    setDragOverQId(null);
+  };
+
+  // Move single step up/down
+  const handleMoveCard = (qId, direction) => {
+    const currentList = [...sortedQuestions];
+    const idx = currentList.findIndex(q => q.id === qId);
+    if (idx < 0) return;
+    const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
+    if (targetIdx < 0 || targetIdx >= currentList.length) return;
+
+    const [moved] = currentList.splice(idx, 1);
+    currentList.splice(targetIdx, 0, moved);
+
+    if (onReorderQuestions) {
+      onReorderQuestions(currentList);
+    }
+  };
+
+  // Keyboard shortcut listener to toggle panel ([ or Ctrl+B)
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Don't trigger if user is typing in an input or textarea
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) {
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
+        e.preventDefault();
+        setIsLeftPanelOpen(prev => !prev);
+      } else if (e.key === '[') {
+        e.preventDefault();
+        setIsLeftPanelOpen(prev => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   return (
     <div className="section-view-container">
@@ -189,9 +291,9 @@ export default function SectionQuestionsView({
                   }}
                 />
               </div>
-              <button 
-                type="button" 
-                className="btn-filter-icon" 
+              <button
+                type="button"
+                className="btn-filter-icon"
                 title="Reset Topic Filter"
                 onClick={() => {
                   if (selectedTopicId !== 'all') setSelectedTopicId('all');
@@ -209,6 +311,30 @@ export default function SectionQuestionsView({
               </button>
             </div>
 
+            {/* Questions Sorting Toolbar */}
+            <div className="questions-sort-toolbar">
+              <div className="sort-label-wrap">
+                <ArrowUpDown size={13} className="sort-icon" />
+                <span>Order:</span>
+              </div>
+              <select
+                className="sort-select-pill"
+                value={sortBy}
+                onChange={(e) => {
+                  setSortBy(e.target.value);
+                  setCurrentPage(1);
+                }}
+              >
+                <option value="custom">Custom (Drag & Drop)</option>
+                <option value="alpha-asc">Question (A → Z)</option>
+                <option value="alpha-desc">Question (Z → A)</option>
+                <option value="diff-asc">Difficulty (Basics → Adv)</option>
+                <option value="diff-desc">Difficulty (Adv → Basics)</option>
+                <option value="uncompleted">Uncompleted First</option>
+                <option value="bookmarked">Bookmarked First</option>
+              </select>
+            </div>
+
             {/* List of Questions */}
             <div className="questions-scrollable-list">
               {paginatedQuestions.length === 0 ? (
@@ -221,19 +347,79 @@ export default function SectionQuestionsView({
                   const isSelected = activeQuestion?.id === q.id;
                   const isCompleted = progress.includes(q.id);
                   const isBookmarked = bookmarks.includes(q.id);
+                  const isDragging = draggedQId === q.id;
+                  const isDragOver = dragOverQId === q.id;
 
                   return (
                     <div
                       key={q.id}
-                      className={`question-list-item ${isSelected ? 'selected' : ''}`}
+                      draggable={sortBy === 'custom'}
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData('text/plain', q.id);
+                        e.dataTransfer.effectAllowed = 'move';
+                        setDraggedQId(q.id);
+                      }}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = 'move';
+                        if (dragOverQId !== q.id) {
+                          setDragOverQId(q.id);
+                        }
+                      }}
+                      onDragLeave={() => {
+                        if (dragOverQId === q.id) {
+                          setDragOverQId(null);
+                        }
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        handleDropQuestion(q.id);
+                      }}
+                      onDragEnd={() => {
+                        setDraggedQId(null);
+                        setDragOverQId(null);
+                      }}
+                      className={`question-list-item ${isSelected ? 'selected' : ''} ${isDragging ? 'is-dragging-card' : ''} ${isDragOver ? 'is-drag-over-card' : ''}`}
                       onClick={() => handleSelectQuestion(q)}
                     >
                       <div className="item-title-row">
+                        {sortBy === 'custom' && (
+                          <div
+                            className="card-drag-handle"
+                            title="Drag to reorder"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <GripVertical size={14} />
+                          </div>
+                        )}
                         <span className="item-number">{globalIndex}.</span>
                         <span className="item-text">{q.question}</span>
                       </div>
 
                       <div className="item-badges-row">
+                        {sortBy === 'custom' && (
+                          <div className="card-micro-nudge" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              type="button"
+                              className="btn-micro-nudge"
+                              disabled={globalIndex === 1}
+                              onClick={() => handleMoveCard(q.id, 'up')}
+                              title="Move question up"
+                            >
+                              <ArrowUp size={11} />
+                            </button>
+                            <button
+                              type="button"
+                              className="btn-micro-nudge"
+                              disabled={globalIndex === sortedQuestions.length}
+                              onClick={() => handleMoveCard(q.id, 'down')}
+                              title="Move question down"
+                            >
+                              <ArrowDown size={11} />
+                            </button>
+                          </div>
+                        )}
+
                         <div className="item-meta-left">
                           {isCompleted && (
                             <span className="badge-done" title="Completed">
@@ -296,7 +482,7 @@ export default function SectionQuestionsView({
         <div className="questions-detail-column">
           <QuestionAccordion
             activeQuestion={activeQuestion}
-            allFilteredQuestions={filteredQuestions}
+            allFilteredQuestions={sortedQuestions}
             otherQuestions={subsequentQuestions}
             section={section}
             topic={activeTopic}

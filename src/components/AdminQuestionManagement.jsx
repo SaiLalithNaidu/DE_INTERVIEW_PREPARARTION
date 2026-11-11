@@ -11,11 +11,22 @@ import {
   Download,
   Upload,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  GripVertical,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown
 } from 'lucide-react';
 import { deleteImageBlob } from '../lib/store';
 
 const PAGE_SIZE = 10;
+
+const DIFFICULTY_WEIGHTS = {
+  Basics: 1,
+  Intermediate: 2,
+  Advanced: 3,
+  Coding: 4
+};
 
 export default function AdminQuestionManagement({
   questions = [],
@@ -25,19 +36,45 @@ export default function AdminQuestionManagement({
   onEditClick,
   onDeleteQuestion,
   onToggleArchiveQuestion,
+  onReorderQuestions,
   onAddSection,
+  onDeleteSection,
   onAddTopic,
   onResetSeedData,
   onExportData,
-  onImportData
+  onImportData,
+  externalToast = '',
+  onClearExternalToast
 }) {
   const [selectedSectionId, setSelectedSectionId] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('active'); // 'active' | 'archived' | 'all'
+  const [sortBy, setSortBy] = useState('custom'); // 'custom' | 'alpha-asc' | 'alpha-desc' | 'diff-asc' | 'diff-desc' | 'newest' | 'oldest'
   const [currentPage, setCurrentPage] = useState(1);
   const [showSectionModal, setShowSectionModal] = useState(false);
   const [newSectionName, setNewSectionName] = useState('');
   const [toastMessage, setToastMessage] = useState('');
+
+  // Handle external toasts (e.g. question saved or updated)
+  React.useEffect(() => {
+    if (externalToast) {
+      setToastMessage(externalToast);
+      const timer = setTimeout(() => {
+        setToastMessage('');
+        if (onClearExternalToast) onClearExternalToast();
+      }, 3500);
+      return () => clearTimeout(timer);
+    }
+  }, [externalToast, onClearExternalToast]);
+
+  // Drag and drop state
+  const [draggedQuestionId, setDraggedQuestionId] = useState(null);
+  const [dragOverQuestionId, setDragOverQuestionId] = useState(null);
+
+  // Study sections only (excluding Dashboard, Admin, etc.)
+  const studySections = useMemo(() => {
+    return sections.filter(s => s.isStudySection !== false && s.id !== 'dashboard' && s.id !== 'admin');
+  }, [sections]);
 
   // Filtered questions
   const filteredQuestions = useMemo(() => {
@@ -61,16 +98,77 @@ export default function AdminQuestionManagement({
     });
   }, [questions, selectedSectionId, statusFilter, searchQuery]);
 
+  // Sorted questions based on sortBy selection
+  const sortedQuestions = useMemo(() => {
+    let result = [...filteredQuestions];
+    if (sortBy === 'alpha-asc') {
+      result.sort((a, b) => a.question.localeCompare(b.question));
+    } else if (sortBy === 'alpha-desc') {
+      result.sort((a, b) => b.question.localeCompare(a.question));
+    } else if (sortBy === 'diff-asc') {
+      result.sort((a, b) => (DIFFICULTY_WEIGHTS[a.difficulty] || 99) - (DIFFICULTY_WEIGHTS[b.difficulty] || 99));
+    } else if (sortBy === 'diff-desc') {
+      result.sort((a, b) => (DIFFICULTY_WEIGHTS[b.difficulty] || 99) - (DIFFICULTY_WEIGHTS[a.difficulty] || 99));
+    } else if (sortBy === 'newest') {
+      result.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+    } else if (sortBy === 'oldest') {
+      result.sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
+    }
+    return result;
+  }, [filteredQuestions, sortBy]);
+
   // Pagination
-  const totalPages = Math.max(1, Math.ceil(filteredQuestions.length / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(sortedQuestions.length / PAGE_SIZE));
   const paginatedList = useMemo(() => {
     const start = (currentPage - 1) * PAGE_SIZE;
-    return filteredQuestions.slice(start, start + PAGE_SIZE);
-  }, [filteredQuestions, currentPage]);
+    return sortedQuestions.slice(start, start + PAGE_SIZE);
+  }, [sortedQuestions, currentPage]);
 
   const showToast = (msg) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(''), 3000);
+  };
+
+  // Drag and drop reordering handler
+  const handleDrop = (targetQuestionId) => {
+    if (!draggedQuestionId || draggedQuestionId === targetQuestionId) {
+      setDraggedQuestionId(null);
+      setDragOverQuestionId(null);
+      return;
+    }
+
+    const currentList = [...sortedQuestions];
+    const sourceIndex = currentList.findIndex(q => q.id === draggedQuestionId);
+    const targetIndex = currentList.findIndex(q => q.id === targetQuestionId);
+
+    if (sourceIndex >= 0 && targetIndex >= 0) {
+      const [movedItem] = currentList.splice(sourceIndex, 1);
+      currentList.splice(targetIndex, 0, movedItem);
+
+      if (onReorderQuestions) {
+        onReorderQuestions(currentList);
+        showToast('Question order updated.');
+      }
+    }
+    setDraggedQuestionId(null);
+    setDragOverQuestionId(null);
+  };
+
+  // Move step up or down single position
+  const handleMoveStep = (questionId, direction) => {
+    const currentList = [...sortedQuestions];
+    const index = currentList.findIndex(q => q.id === questionId);
+    if (index < 0) return;
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= currentList.length) return;
+
+    const [moved] = currentList.splice(index, 1);
+    currentList.splice(targetIndex, 0, moved);
+
+    if (onReorderQuestions) {
+      onReorderQuestions(currentList);
+      showToast('Position updated.');
+    }
   };
 
   const handleCreateSection = (e) => {
@@ -79,8 +177,20 @@ export default function AdminQuestionManagement({
     const id = newSectionName.toLowerCase().replace(/[^a-z0-9]/g, '-');
     onAddSection({ id, name: newSectionName.trim(), icon: 'Layers', isStudySection: true });
     setNewSectionName('');
-    setShowSectionModal(false);
-    showToast('New Section created successfully!');
+    showToast(`Section "${newSectionName.trim()}" created successfully!`);
+  };
+
+  const handleDeleteSectionPrompt = (secId, secName) => {
+    const count = questions.filter(q => q.sectionId === secId).length;
+    if (window.confirm(`Are you sure you want to delete section "${secName}"? This will permanently delete this section and all ${count} associated questions.`)) {
+      if (onDeleteSection) {
+        onDeleteSection(secId);
+      }
+      if (selectedSectionId === secId) {
+        setSelectedSectionId('all');
+      }
+      showToast(`Section "${secName}" deleted.`);
+    }
   };
 
   return (
@@ -113,10 +223,10 @@ export default function AdminQuestionManagement({
             type="button"
             className="btn-admin-secondary"
             onClick={() => setShowSectionModal(true)}
-            title="Create new section"
+            title="Manage and Delete Sections"
           >
             <Layers size={15} />
-            <span>+ Section</span>
+            <span>Manage Sections ({studySections.length})</span>
           </button>
 
           <button
@@ -125,7 +235,7 @@ export default function AdminQuestionManagement({
             onClick={onAddNewClick}
           >
             <Plus size={16} />
-            <span>+ Add Question</span>
+            <span>Add Question</span>
           </button>
         </div>
       </div>
@@ -133,9 +243,25 @@ export default function AdminQuestionManagement({
       {/* Filter Toolbar without Topic dropdown */}
       <div className="admin-filter-card">
         <div className="admin-filter-controls">
-          {/* Section dropdown */}
+          {/* Section dropdown + Quick Delete Section */}
           <div className="filter-select-group">
-            <label>Section</label>
+            <div className="label-with-action">
+              <label>Section</label>
+              {selectedSectionId !== 'all' && (
+                <button
+                  type="button"
+                  className="btn-text-danger"
+                  onClick={() => {
+                    const sec = sections.find(s => s.id === selectedSectionId);
+                    handleDeleteSectionPrompt(selectedSectionId, sec?.name || selectedSectionId);
+                  }}
+                  title="Delete this section"
+                >
+                  <Trash2 size={12} />
+                  <span>Delete</span>
+                </button>
+              )}
+            </div>
             <select
               value={selectedSectionId}
               onChange={(e) => {
@@ -143,8 +269,8 @@ export default function AdminQuestionManagement({
                 setCurrentPage(1);
               }}
             >
-              <option value="all">All Sections</option>
-              {sections.filter(s => s.isStudySection !== false).map(s => (
+              <option value="all">All Sections ({studySections.length})</option>
+              {studySections.map(s => (
                 <option key={s.id} value={s.id}>{s.name}</option>
               ))}
             </select>
@@ -182,15 +308,44 @@ export default function AdminQuestionManagement({
               <option value="all">All Statuses</option>
             </select>
           </div>
+
+          {/* Sort Order options */}
+          <div className="filter-select-group">
+            <div className="label-with-action">
+              <label>Sort Order</label>
+              <ArrowUpDown size={12} className="text-muted" />
+            </div>
+            <select
+              value={sortBy}
+              onChange={(e) => {
+                setSortBy(e.target.value);
+                setCurrentPage(1);
+              }}
+            >
+              <option value="custom">Custom Order (Drag & Drop)</option>
+              <option value="alpha-asc">Question (A → Z)</option>
+              <option value="alpha-desc">Question (Z → A)</option>
+              <option value="diff-asc">Difficulty (Basics → Adv)</option>
+              <option value="diff-desc">Difficulty (Adv → Basics)</option>
+              <option value="newest">Newest First</option>
+              <option value="oldest">Oldest First</option>
+            </select>
+          </div>
         </div>
       </div>
 
       {/* Questions Data Table */}
       <div className="admin-table-card">
+        {sortBy === 'custom' && (
+          <div className="table-drag-hint-bar">
+            <GripVertical size={14} />
+            <span>Drag rows by the handle on the left to reorder questions, or use the up/down arrows.</span>
+          </div>
+        )}
         <table className="admin-table">
           <thead>
             <tr>
-              <th style={{ width: '40px' }}>#</th>
+              <th style={{ width: '75px' }}>#</th>
               <th>Question</th>
               <th style={{ width: '130px' }}>Section</th>
               <th style={{ width: '140px' }}>Topic</th>
@@ -212,10 +367,78 @@ export default function AdminQuestionManagement({
                 const sectionObj = sections.find(s => s.id === q.sectionId);
                 const topicObj = topics.find(t => t.id === q.topicId);
                 const hasImage = Boolean(q.imageId || q.infographicData);
+                const isDragging = draggedQuestionId === q.id;
+                const isDragOver = dragOverQuestionId === q.id;
 
                 return (
-                  <tr key={q.id}>
-                    <td className="row-number">{globalIndex}</td>
+                  <tr
+                    key={q.id}
+                    draggable={sortBy === 'custom'}
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData('text/plain', q.id);
+                      e.dataTransfer.effectAllowed = 'move';
+                      setDraggedQuestionId(q.id);
+                    }}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = 'move';
+                      if (dragOverQuestionId !== q.id) {
+                        setDragOverQuestionId(q.id);
+                      }
+                    }}
+                    onDragLeave={() => {
+                      if (dragOverQuestionId === q.id) {
+                        setDragOverQuestionId(null);
+                      }
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      handleDrop(q.id);
+                    }}
+                    onDragEnd={() => {
+                      setDraggedQuestionId(null);
+                      setDragOverQuestionId(null);
+                    }}
+                    className={`admin-table-row ${isDragging ? 'is-dragging' : ''} ${isDragOver ? 'is-drag-over' : ''}`}
+                  >
+                    <td className="row-number-cell">
+                      <div className="row-drag-wrapper">
+                        {sortBy === 'custom' && (
+                          <div className="drag-handle-grip" title="Drag to reorder">
+                            <GripVertical size={14} />
+                          </div>
+                        )}
+                        <span className="row-number">{globalIndex}</span>
+                        {sortBy === 'custom' && (
+                          <div className="micro-reorder-actions">
+                            <button
+                              type="button"
+                              className="btn-micro-step"
+                              disabled={globalIndex === 1}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleMoveStep(q.id, 'up');
+                              }}
+                              title="Move up"
+                            >
+                              <ArrowUp size={11} />
+                            </button>
+                            <button
+                              type="button"
+                              className="btn-micro-step"
+                              disabled={globalIndex === sortedQuestions.length}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleMoveStep(q.id, 'down');
+                              }}
+                              title="Move down"
+                            >
+                              <ArrowDown size={11} />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </td>
                     <td className="row-question-text">
                       <span className="question-title-text">{q.question}</span>
                       <span className="question-sub-diff">{q.difficulty || 'Concept'}</span>
@@ -350,34 +573,61 @@ export default function AdminQuestionManagement({
         </div>
       </div>
 
-      {/* Modal: Add New Section */}
+      {/* Modal: Manage & Delete Sections */}
       {showSectionModal && (
         <div className="modal-backdrop">
-          <div className="modal-dialog">
+          <div className="modal-dialog modal-dialog-wide">
             <div className="modal-header">
-              <h3>Create New Section</h3>
+              <h3>Manage Sections ({studySections.length})</h3>
               <button type="button" onClick={() => setShowSectionModal(false)}>×</button>
             </div>
-            <form onSubmit={handleCreateSection} className="modal-form">
-              <div className="form-field">
-                <label>Section Name *</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Kafka, Data Modeling, Kubernetes"
-                  value={newSectionName}
-                  onChange={(e) => setNewSectionName(e.target.value)}
-                  required
-                />
-              </div>
-              <div className="modal-footer">
-                <button type="button" className="btn-cancel" onClick={() => setShowSectionModal(false)}>
-                  Cancel
-                </button>
-                <button type="submit" className="btn-submit">
-                  Create Section
-                </button>
-              </div>
+
+            {/* Quick Add Section Form */}
+            <form onSubmit={handleCreateSection} className="modal-form-inline">
+              <input
+                type="text"
+                placeholder="New section name (e.g. Kafka, dbt, Snowflake)..."
+                value={newSectionName}
+                onChange={(e) => setNewSectionName(e.target.value)}
+                required
+              />
+              <button type="submit" className="btn-submit">
+                + Add Section
+              </button>
             </form>
+
+            {/* List of Existing Sections with Delete Option */}
+            <div className="modal-sections-list">
+              <label className="section-list-heading">Existing Sections ({studySections.length})</label>
+              <div className="sections-scroll-container">
+                {studySections.map(sec => {
+                  const count = questions.filter(q => q.sectionId === sec.id).length;
+                  return (
+                    <div key={sec.id} className="manage-section-item">
+                      <div className="manage-sec-info">
+                        <span className="manage-sec-name">{sec.name}</span>
+                        <span className="manage-sec-badge">{count} questions</span>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn-delete-section"
+                        onClick={() => handleDeleteSectionPrompt(sec.id, sec.name)}
+                        title={`Delete section "${sec.name}" and all questions`}
+                      >
+                        <Trash2 size={15} />
+                        <span>Delete</span>
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="modal-footer">
+              <button type="button" className="btn-cancel" onClick={() => setShowSectionModal(false)}>
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}

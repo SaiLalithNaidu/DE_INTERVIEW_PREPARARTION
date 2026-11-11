@@ -42,6 +42,8 @@ export default function App() {
   const [currentRoute, setCurrentRoute] = useState('section-python'); // default starts directly in Python section as shown in screenshot
   const [adminMode, setAdminMode] = useState('list'); // 'list' | 'add' | 'edit'
   const [editingQuestion, setEditingQuestion] = useState(null);
+  const [addQuestionKey, setAddQuestionKey] = useState(1);
+  const [adminToast, setAdminToast] = useState('');
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
@@ -87,13 +89,29 @@ export default function App() {
       setStoredData(STORAGE_KEYS.QUESTIONS, updated);
       return updated;
     });
-    setAdminMode('list');
     setEditingQuestion(null);
+    setAdminToast(editingQuestion ? 'Question updated successfully!' : 'Question added successfully!');
+    setAdminMode('list');
   };
 
   const handleDeleteQuestion = (questionId) => {
     setQuestions(prev => {
       const updated = prev.filter(q => q.id !== questionId);
+      setStoredData(STORAGE_KEYS.QUESTIONS, updated);
+      return updated;
+    });
+  };
+
+  const handleReorderQuestions = (reorderedSubset) => {
+    setQuestions(prev => {
+      const subsetIds = new Set(reorderedSubset.map(q => q.id));
+      let subsetIndex = 0;
+      const updated = prev.map(q => {
+        if (subsetIds.has(q.id)) {
+          return reorderedSubset[subsetIndex++];
+        }
+        return q;
+      });
       setStoredData(STORAGE_KEYS.QUESTIONS, updated);
       return updated;
     });
@@ -114,6 +132,26 @@ export default function App() {
 
   const handleAddSection = (newSec) => {
     updateSections([...sections, newSec]);
+  };
+
+  const handleDeleteSection = (sectionId) => {
+    // 1. Remove section
+    const updatedSections = sections.filter(s => s.id !== sectionId);
+    updateSections(updatedSections);
+
+    // 2. Remove associated topics
+    const updatedTopics = topics.filter(t => t.sectionId !== sectionId);
+    updateTopics(updatedTopics);
+
+    // 3. Remove associated questions
+    const updatedQuestions = questions.filter(q => q.sectionId !== sectionId);
+    updateQuestions(updatedQuestions);
+
+    // 4. Redirect if currently in this section
+    if (currentRoute === `section-${sectionId}`) {
+      const remainingStudy = updatedSections.find(s => s.isStudySection);
+      setCurrentRoute(remainingStudy ? `section-${remainingStudy.id}` : 'dashboard');
+    }
   };
 
   const handleAddTopic = (newTopic) => {
@@ -264,6 +302,7 @@ export default function App() {
               progress={progress}
               onToggleBookmark={handleToggleBookmark}
               onToggleComplete={handleToggleComplete}
+              onReorderQuestions={handleReorderQuestions}
             />
           )}
 
@@ -275,8 +314,11 @@ export default function App() {
                   questions={questions}
                   sections={sections}
                   topics={topics}
+                  externalToast={adminToast}
+                  onClearExternalToast={() => setAdminToast('')}
                   onAddNewClick={() => {
                     setEditingQuestion(null);
+                    setAddQuestionKey(prev => prev + 1);
                     setAdminMode('add');
                   }}
                   onEditClick={(q) => {
@@ -285,7 +327,9 @@ export default function App() {
                   }}
                   onDeleteQuestion={handleDeleteQuestion}
                   onToggleArchiveQuestion={handleToggleArchiveQuestion}
+                  onReorderQuestions={handleReorderQuestions}
                   onAddSection={handleAddSection}
+                  onDeleteSection={handleDeleteSection}
                   onAddTopic={handleAddTopic}
                   onResetSeedData={handleResetSeedData}
                   onExportData={handleExportData}
@@ -295,10 +339,12 @@ export default function App() {
 
               {(adminMode === 'add' || adminMode === 'edit') && (
                 <AdminAddEditQuestion
+                  key={editingQuestion ? `edit-${editingQuestion.id}` : `add-${addQuestionKey}`}
                   editingQuestion={editingQuestion}
                   sections={sections}
                   topics={topics}
                   onSaveQuestion={handleSaveQuestion}
+                  onAddTopic={handleAddTopic}
                   onCancel={() => {
                     setAdminMode('list');
                     setEditingQuestion(null);
