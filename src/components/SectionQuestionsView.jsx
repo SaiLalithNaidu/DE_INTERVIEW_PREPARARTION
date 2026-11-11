@@ -1,8 +1,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import {
   Search,
-  Filter,
-  ChevronRight,
+  ChevronDown,
+  ChevronUp,
   Bookmark,
   Check,
   PanelLeftClose,
@@ -11,15 +11,20 @@ import {
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
-  Sparkles,
   CheckCircle2,
-  SlidersHorizontal,
+  ListOrdered,
   X,
-  ListOrdered
+  FileText,
+  Code2,
+  Copy,
+  CheckCheck,
+  Eye,
+  EyeOff
 } from 'lucide-react';
-import QuestionAccordion from './QuestionAccordion';
+import confetti from 'canvas-confetti';
+import InfographicViewer from './InfographicViewer';
 
-const PAGE_SIZE = 12;
+const PAGE_SIZE = 10;
 
 const DIFFICULTY_WEIGHTS = {
   Basics: 1,
@@ -42,13 +47,21 @@ export default function SectionQuestionsView({
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('custom'); // 'custom' | 'alpha-asc' | 'alpha-desc' | 'diff-asc' | 'diff-desc' | 'uncompleted' | 'bookmarked'
   const [currentPage, setCurrentPage] = useState(1);
-  const [activeQuestionId, setActiveQuestionId] = useState(null);
-  const [isLeftPanelOpen, setIsLeftPanelOpen] = useState(true);
-  const [isReorderMode, setIsReorderMode] = useState(false); // Clean Study Mode vs Reorder Mode
-
-  // Drag and drop state
+  
+  // Left-side questions panel hidden by default per user request
+  const [isLeftPanelOpen, setIsLeftPanelOpen] = useState(false);
+  
+  // Accordion state: set of open question IDs (defaults to first question open)
+  const [openQuestionIds, setOpenQuestionIds] = useState(new Set());
+  
+  // Reorder mode state for drag-and-drop
+  const [isReorderMode, setIsReorderMode] = useState(false);
   const [draggedQId, setDraggedQId] = useState(null);
   const [dragOverQId, setDragOverQId] = useState(null);
+
+  // Expanded details drawer within accordion (for optional text explanation/code)
+  const [expandedDetailsMap, setExpandedDetailsMap] = useState({});
+  const [copiedCodeId, setCopiedCodeId] = useState(null);
 
   // Filter topics belonging to this section
   const sectionTopics = useMemo(() => {
@@ -108,18 +121,6 @@ export default function SectionQuestionsView({
     return result;
   }, [filteredQuestions, sortBy, progress, bookmarks]);
 
-  // Set default active question when list changes or loads
-  useEffect(() => {
-    if (sortedQuestions.length > 0) {
-      const exists = sortedQuestions.some(q => q.id === activeQuestionId);
-      if (!exists) {
-        setActiveQuestionId(sortedQuestions[0].id);
-      }
-    } else {
-      setActiveQuestionId(null);
-    }
-  }, [sortedQuestions, activeQuestionId]);
-
   // Pagination calculations
   const totalPages = Math.max(1, Math.ceil(sortedQuestions.length / PAGE_SIZE));
   const paginatedQuestions = useMemo(() => {
@@ -127,14 +128,19 @@ export default function SectionQuestionsView({
     return sortedQuestions.slice(startIndex, startIndex + PAGE_SIZE);
   }, [sortedQuestions, currentPage]);
 
-  // Find the currently active question object
-  const activeQuestion = useMemo(() => {
-    return sortedQuestions.find(q => q.id === activeQuestionId) || paginatedQuestions[0] || null;
-  }, [sortedQuestions, activeQuestionId, paginatedQuestions]);
+  // Automatically expand the first question of the current page if none are open
+  useEffect(() => {
+    if (paginatedQuestions.length > 0) {
+      setOpenQuestionIds(prev => {
+        if (prev.size === 0) {
+          return new Set([paginatedQuestions[0].id]);
+        }
+        return prev;
+      });
+    }
+  }, [currentPage, paginatedQuestions]);
 
-  const activeTopic = topics.find(t => t.id === activeQuestion?.topicId);
-
-  // Topic count calculation helper
+  // Topic count helper
   const getTopicCount = (topicId) => {
     if (topicId === 'all') {
       return allQuestions.filter(q => q.sectionId === section.id && q.active !== false).length;
@@ -146,21 +152,51 @@ export default function SectionQuestionsView({
     ).length;
   };
 
-  // Section level completion stats
-  const totalSectionQuestions = useMemo(() => {
-    return allQuestions.filter(q => q.sectionId === section.id && q.active !== false).length;
-  }, [allQuestions, section.id]);
+  // Toggle accordion open/close for a question
+  const toggleAccordion = (questionId) => {
+    setOpenQuestionIds(prev => {
+      const next = new Set(prev);
+      if (next.has(questionId)) {
+        next.delete(questionId);
+      } else {
+        // Single expand behavior: opens clicked question
+        next.clear();
+        next.add(questionId);
+      }
+      return next;
+    });
+  };
 
-  const completedSectionCount = useMemo(() => {
-    return allQuestions.filter(q => q.sectionId === section.id && q.active !== false && progress.includes(q.id)).length;
-  }, [allQuestions, section.id, progress]);
+  // Toggle optional text/code details drawer
+  const toggleDetails = (questionId, e) => {
+    e.stopPropagation();
+    setExpandedDetailsMap(prev => ({
+      ...prev,
+      [questionId]: !prev[questionId]
+    }));
+  };
 
-  const progressPercent = totalSectionQuestions > 0
-    ? Math.round((completedSectionCount / totalSectionQuestions) * 100)
-    : 0;
+  const handleCopyCode = (code, qId, e) => {
+    e.stopPropagation();
+    if (code) {
+      navigator.clipboard.writeText(code);
+      setCopiedCodeId(qId);
+      setTimeout(() => setCopiedCodeId(null), 2000);
+    }
+  };
 
-  const handleSelectQuestion = (q) => {
-    setActiveQuestionId(q.id);
+  const handleToggleCompleteWithConfetti = (qId, isCompleted, e) => {
+    e.stopPropagation();
+    if (!isCompleted) {
+      try {
+        confetti({
+          particleCount: 50,
+          spread: 60,
+          origin: { y: 0.3, x: 0.7 }
+        });
+      } catch (err) {}
+    }
+    onToggleComplete(qId);
   };
 
   // Drag and drop handlers
@@ -187,7 +223,6 @@ export default function SectionQuestionsView({
     setDragOverQId(null);
   };
 
-  // Move single step up/down
   const handleMoveCard = (qId, direction) => {
     const currentList = [...sortedQuestions];
     const idx = currentList.findIndex(q => q.id === qId);
@@ -222,353 +257,352 @@ export default function SectionQuestionsView({
   }, []);
 
   return (
-    <div className="section-study-view">
-      {/* Top Banner: Section Header + Filter Chips + Progress Bar */}
-      <div className="section-study-header">
-        <div className="section-header-top">
-          <div className="section-title-wrap">
-            <h1 className="section-main-title">{section.name} Interview Questions</h1>
-            <p className="section-main-subtitle">
-              Concept-wise comprehensive interview guide with architecture diagrams, code, and explanations.
-            </p>
-          </div>
+    <div className="simple-accordion-view">
+      {/* 1. Slim Toolbar (No big distracting header section) */}
+      <div className="simple-top-toolbar">
+        {/* Left side: Topic Filter Pills */}
+        <div className="simple-topic-chips-row">
+          <button
+            type="button"
+            className={`simple-chip-pill ${selectedTopicId === 'all' ? 'active' : ''}`}
+            onClick={() => {
+              setSelectedTopicId('all');
+              setCurrentPage(1);
+            }}
+          >
+            All ({getTopicCount('all')})
+          </button>
 
-          <div className="section-header-stats">
-            <div className="stats-metric">
-              <span className="stats-num">{completedSectionCount} / {totalSectionQuestions}</span>
-              <span className="stats-lbl">Learned ({progressPercent}%)</span>
-            </div>
-            <div className="stats-bar-track">
-              <div 
-                className="stats-bar-fill" 
-                style={{ width: `${progressPercent}%` }}
-              ></div>
-            </div>
-          </div>
+          {sectionTopics
+            .filter(topic => getTopicCount(topic.id) > 0)
+            .map(topic => (
+              <button
+                key={topic.id}
+                type="button"
+                className={`simple-chip-pill ${selectedTopicId === topic.id ? 'active' : ''}`}
+                onClick={() => {
+                  setSelectedTopicId(topic.id);
+                  setCurrentPage(1);
+                }}
+              >
+                {topic.name} ({getTopicCount(topic.id)})
+              </button>
+            ))}
         </div>
 
-        {/* Topic Filter Chips (Hides 0-count topics to keep interface clean) */}
-        <div className="section-toolbar-row">
-          <div className="topic-filter-chips-row">
-            <button
-              type="button"
-              className={`chip-pill ${selectedTopicId === 'all' ? 'active' : ''}`}
-              onClick={() => {
-                setSelectedTopicId('all');
+        {/* Right side: Search + Left Panel Toggle */}
+        <div className="simple-toolbar-tools">
+          <div className="simple-search-wrap">
+            <Search size={14} className="search-icon" />
+            <input
+              type="text"
+              placeholder="Search questions..."
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
                 setCurrentPage(1);
               }}
-            >
-              All ({getTopicCount('all')})
-            </button>
-
-            {sectionTopics
-              .filter(topic => getTopicCount(topic.id) > 0)
-              .map(topic => (
-                <button
-                  key={topic.id}
-                  type="button"
-                  className={`chip-pill ${selectedTopicId === topic.id ? 'active' : ''}`}
-                  onClick={() => {
-                    setSelectedTopicId(topic.id);
-                    setCurrentPage(1);
-                  }}
-                >
-                  {topic.name} ({getTopicCount(topic.id)})
-                </button>
-              ))}
-
-            {/* Fallback difficulty chips if no specific section topics */}
-            {sectionTopics.length === 0 && (
-              <>
-                {getTopicCount('basics') > 0 && (
-                  <button
-                    type="button"
-                    className={`chip-pill ${selectedTopicId === 'basics' ? 'active' : ''}`}
-                    onClick={() => { setSelectedTopicId('basics'); setCurrentPage(1); }}
-                  >
-                    Basics ({getTopicCount('basics')})
-                  </button>
-                )}
-                {getTopicCount('advanced') > 0 && (
-                  <button
-                    type="button"
-                    className={`chip-pill ${selectedTopicId === 'advanced' ? 'active' : ''}`}
-                    onClick={() => { setSelectedTopicId('advanced'); setCurrentPage(1); }}
-                  >
-                    Advanced ({getTopicCount('advanced')})
-                  </button>
-                )}
-              </>
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                className="btn-clear-search-pill"
+                onClick={() => setSearchQuery('')}
+              >
+                <X size={12} />
+              </button>
             )}
           </div>
 
-          {/* Toggle Panel Button */}
+          {/* Toggle Button for Left-Side Questions Panel */}
           <button
             type="button"
-            className={`btn-toggle-panel-header ${isLeftPanelOpen ? 'open' : 'collapsed'}`}
+            className={`btn-toggle-left-questions ${isLeftPanelOpen ? 'active' : ''}`}
             onClick={() => setIsLeftPanelOpen(prev => !prev)}
-            title={isLeftPanelOpen ? "Hide syllabus list" : "Show syllabus list"}
+            title={isLeftPanelOpen ? "Hide Questions Panel" : "Show Questions Panel"}
           >
             {isLeftPanelOpen ? <PanelLeftClose size={15} /> : <PanelLeftOpen size={15} />}
-            <span>{isLeftPanelOpen ? "Hide Syllabus" : "Show Syllabus"}</span>
+            <span>{isLeftPanelOpen ? "Hide Panel" : "Questions Panel"}</span>
           </button>
         </div>
       </div>
 
-      {/* Main Split Layout: Left Syllabus Index & Right Comprehensive Study Pane */}
-      <div className={`study-layout-grid ${!isLeftPanelOpen ? 'syllabus-collapsed' : ''}`}>
-        {/* Left Column: Syllabus Card List */}
+      {/* 2. Main Content Layout: Optional Left Panel (hidden by default) + Accordion Questions List */}
+      <div className={`simple-accordion-layout ${isLeftPanelOpen ? 'with-left-panel' : 'full-width'}`}>
+        {/* Optional Left Questions Panel (Hidden by default) */}
         {isLeftPanelOpen && (
-          <aside className="syllabus-column">
-            {/* Syllabus Top Tools: Search + Sort dropdown + Reorder mode button */}
-            <div className="syllabus-tools-box">
-              <div className="syllabus-search-input-wrap">
-                <Search size={14} className="search-icon" />
-                <input
-                  type="text"
-                  placeholder="Search questions..."
-                  value={searchQuery}
-                  onChange={(e) => {
-                    setSearchQuery(e.target.value);
-                    setCurrentPage(1);
-                  }}
-                />
-                {searchQuery && (
-                  <button 
-                    type="button" 
-                    className="btn-clear-search"
-                    onClick={() => setSearchQuery('')}
-                  >
-                    <X size={13} />
-                  </button>
-                )}
-              </div>
+          <aside className="simple-left-drawer">
+            <div className="drawer-header-row">
+              <span className="drawer-title">Questions List ({filteredQuestions.length})</span>
+              <button
+                type="button"
+                className={`btn-reorder-toggle-sm ${isReorderMode ? 'active' : ''}`}
+                onClick={() => setIsReorderMode(prev => !prev)}
+                title="Toggle reordering"
+              >
+                <ListOrdered size={13} />
+                <span>{isReorderMode ? 'Done' : 'Reorder'}</span>
+              </button>
+            </div>
 
-              <div className="syllabus-action-subrow">
-                <div className="syllabus-sort-wrap">
-                  <ArrowUpDown size={12} className="sort-icon" />
-                  <select
-                    className="syllabus-sort-select"
-                    value={sortBy}
-                    onChange={(e) => {
-                      setSortBy(e.target.value);
-                      setCurrentPage(1);
+            <div className="drawer-scroll-list">
+              {paginatedQuestions.map((q, idx) => {
+                const globalIndex = (currentPage - 1) * PAGE_SIZE + idx + 1;
+                const isOpen = openQuestionIds.has(q.id);
+                const isCompleted = progress.includes(q.id);
+                const isBookmarked = bookmarks.includes(q.id);
+
+                return (
+                  <div
+                    key={q.id}
+                    className={`drawer-question-card ${isOpen ? 'active-open' : ''}`}
+                    onClick={() => {
+                      setOpenQuestionIds(new Set([q.id]));
+                      // Scroll to question
+                      const el = document.getElementById(`accordion-q-${q.id}`);
+                      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
                     }}
-                    title="Change question order"
                   >
-                    <option value="custom">Default Order</option>
-                    <option value="alpha-asc">Question (A → Z)</option>
-                    <option value="alpha-desc">Question (Z → A)</option>
-                    <option value="diff-asc">Difficulty (Easy → Adv)</option>
-                    <option value="diff-desc">Difficulty (Adv → Easy)</option>
-                    <option value="uncompleted">Uncompleted First</option>
-                    <option value="bookmarked">Bookmarked First</option>
-                  </select>
-                </div>
-
-                <button
-                  type="button"
-                  className={`btn-reorder-mode-toggle ${isReorderMode ? 'active' : ''}`}
-                  onClick={() => setIsReorderMode(prev => !prev)}
-                  title={isReorderMode ? "Exit reorder mode" : "Enable drag-and-drop reorder mode"}
-                >
-                  <ListOrdered size={13} />
-                  <span>{isReorderMode ? 'Done' : 'Reorder'}</span>
-                </button>
-              </div>
-
-              {/* Informational Banner when Reorder Mode is Active */}
-              {isReorderMode && (
-                <div className="reorder-mode-active-banner">
-                  <GripVertical size={13} />
-                  <span>Drag cards or use arrows to rearrange question sequence.</span>
-                </div>
-              )}
+                    <span className="drawer-q-idx">{globalIndex}.</span>
+                    <span className="drawer-q-title">{q.question}</span>
+                    {isCompleted && <Check size={12} className="text-emerald-500" />}
+                    {isBookmarked && <Bookmark size={12} className="text-amber-500" fill="currentColor" />}
+                  </div>
+                );
+              })}
             </div>
-
-            {/* List of Syllabus Question Items */}
-            <div className="syllabus-scroll-container">
-              {paginatedQuestions.length === 0 ? (
-                <div className="syllabus-empty-state">
-                  <p>No questions found matching your filter.</p>
-                  {searchQuery && (
-                    <button 
-                      type="button" 
-                      className="btn-reset-filters-link"
-                      onClick={() => { setSearchQuery(''); setSelectedTopicId('all'); }}
-                    >
-                      Clear search filter
-                    </button>
-                  )}
-                </div>
-              ) : (
-                paginatedQuestions.map((q, idx) => {
-                  const globalIndex = (currentPage - 1) * PAGE_SIZE + idx + 1;
-                  const isSelected = activeQuestion?.id === q.id;
-                  const isCompleted = progress.includes(q.id);
-                  const isBookmarked = bookmarks.includes(q.id);
-                  const isDragging = draggedQId === q.id;
-                  const isDragOver = dragOverQId === q.id;
-
-                  return (
-                    <div
-                      key={q.id}
-                      draggable={isReorderMode}
-                      onDragStart={(e) => {
-                        if (!isReorderMode) return;
-                        e.dataTransfer.setData('text/plain', q.id);
-                        e.dataTransfer.effectAllowed = 'move';
-                        setDraggedQId(q.id);
-                      }}
-                      onDragOver={(e) => {
-                        if (!isReorderMode) return;
-                        e.preventDefault();
-                        e.dataTransfer.dropEffect = 'move';
-                        if (dragOverQId !== q.id) {
-                          setDragOverQId(q.id);
-                        }
-                      }}
-                      onDragLeave={() => {
-                        if (dragOverQId === q.id) {
-                          setDragOverQId(null);
-                        }
-                      }}
-                      onDrop={(e) => {
-                        if (!isReorderMode) return;
-                        e.preventDefault();
-                        handleDropQuestion(q.id);
-                      }}
-                      onDragEnd={() => {
-                        setDraggedQId(null);
-                        setDragOverQId(null);
-                      }}
-                      className={`syllabus-item-card ${isSelected ? 'selected' : ''} ${isDragging ? 'is-dragging' : ''} ${isDragOver ? 'is-drag-over' : ''} ${isReorderMode ? 'in-reorder-mode' : ''}`}
-                      onClick={() => handleSelectQuestion(q)}
-                    >
-                      {/* Left side: Reorder Handle (shown only in Reorder Mode) or Index Number */}
-                      <div className="syllabus-item-prefix">
-                        {isReorderMode ? (
-                          <div className="syllabus-drag-grip" title="Drag to reorder">
-                            <GripVertical size={14} />
-                          </div>
-                        ) : (
-                          <span className="syllabus-index-num">{globalIndex}</span>
-                        )}
-                      </div>
-
-                      {/* Main text */}
-                      <div className="syllabus-item-body">
-                        <span className="syllabus-item-title">{q.question}</span>
-                        
-                        {/* Meta indicators: Difficulty dot + status badges */}
-                        <div className="syllabus-item-meta">
-                          {q.difficulty && (
-                            <span className="syllabus-difficulty-tag">
-                              {q.difficulty}
-                            </span>
-                          )}
-                          {isCompleted && (
-                            <span className="syllabus-status-tag completed" title="Completed">
-                              <Check size={11} />
-                              <span>Learned</span>
-                            </span>
-                          )}
-                          {isBookmarked && (
-                            <span className="syllabus-status-tag bookmarked" title="Bookmarked">
-                              <Bookmark size={11} fill="currentColor" />
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Right side: Reorder Nudge Arrows (Reorder Mode) or Chevron */}
-                      <div className="syllabus-item-suffix">
-                        {isReorderMode ? (
-                          <div className="syllabus-micro-arrows" onClick={(e) => e.stopPropagation()}>
-                            <button
-                              type="button"
-                              className="btn-arrow-nudge"
-                              disabled={globalIndex === 1}
-                              onClick={() => handleMoveCard(q.id, 'up')}
-                              title="Move question up"
-                            >
-                              <ArrowUp size={11} />
-                            </button>
-                            <button
-                              type="button"
-                              className="btn-arrow-nudge"
-                              disabled={globalIndex === sortedQuestions.length}
-                              onClick={() => handleMoveCard(q.id, 'down')}
-                              title="Move question down"
-                            >
-                              <ArrowDown size={11} />
-                            </button>
-                          </div>
-                        ) : (
-                          <ChevronRight size={14} className="syllabus-chevron" />
-                        )}
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-
-            {/* Pagination Footer */}
-            {totalPages > 1 && (
-              <div className="syllabus-pagination-bar">
-                <button
-                  type="button"
-                  className="btn-page-nav"
-                  disabled={currentPage === 1}
-                  onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                  title="Previous page"
-                >
-                  ‹
-                </button>
-
-                <div className="page-numbers-group">
-                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
-                    <button
-                      key={pageNum}
-                      type="button"
-                      className={`btn-page-number ${currentPage === pageNum ? 'active' : ''}`}
-                      onClick={() => setCurrentPage(pageNum)}
-                    >
-                      {pageNum}
-                    </button>
-                  ))}
-                </div>
-
-                <button
-                  type="button"
-                  className="btn-page-nav"
-                  disabled={currentPage === totalPages}
-                  onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                  title="Next page"
-                >
-                  ›
-                </button>
-              </div>
-            )}
           </aside>
         )}
 
-        {/* Right Column: Comprehensive Study Pane */}
-        <main className="study-content-column">
-          <QuestionAccordion
-            activeQuestion={activeQuestion}
-            allFilteredQuestions={sortedQuestions}
-            section={section}
-            topic={activeTopic}
-            isBookmarked={activeQuestion ? bookmarks.includes(activeQuestion.id) : false}
-            isCompleted={activeQuestion ? progress.includes(activeQuestion.id) : false}
-            onToggleBookmark={onToggleBookmark}
-            onToggleComplete={onToggleComplete}
-            onSelectQuestion={handleSelectQuestion}
-            isLeftPanelOpen={isLeftPanelOpen}
-            onToggleLeftPanel={() => setIsLeftPanelOpen(prev => !prev)}
-          />
+        {/* Main Accordion Stream: Simple UI displaying question with image shown below it */}
+        <main className="simple-accordion-stream">
+          {paginatedQuestions.length === 0 ? (
+            <div className="simple-empty-card">
+              <p>No questions found matching your criteria.</p>
+              {searchQuery && (
+                <button
+                  type="button"
+                  className="btn-clear-query-link"
+                  onClick={() => setSearchQuery('')}
+                >
+                  Clear search query
+                </button>
+              )}
+            </div>
+          ) : (
+            paginatedQuestions.map((q, idx) => {
+              const globalIndex = (currentPage - 1) * PAGE_SIZE + idx + 1;
+              const isExpanded = openQuestionIds.has(q.id);
+              const isCompleted = progress.includes(q.id);
+              const isBookmarked = bookmarks.includes(q.id);
+              const showDetails = Boolean(expandedDetailsMap[q.id]);
+              const hasCode = Boolean(q.example || q.code);
+              const codeSnippet = q.example || q.code || '';
+
+              return (
+                <article
+                  key={q.id}
+                  id={`accordion-q-${q.id}`}
+                  className={`accordion-question-item ${isExpanded ? 'is-open' : 'is-closed'}`}
+                >
+                  {/* Accordion Question Header: Clicking toggles expand/collapse */}
+                  <header
+                    className="accordion-item-header"
+                    onClick={() => toggleAccordion(q.id)}
+                  >
+                    <div className="accordion-header-left">
+                      <span className="accordion-q-number">Q{globalIndex}.</span>
+                      <h2 className="accordion-q-title">{q.question}</h2>
+                    </div>
+
+                    <div className="accordion-header-right">
+                      {isCompleted && (
+                        <span className="badge-pill-status completed" title="Learned">
+                          <Check size={12} />
+                          <span>Learned</span>
+                        </span>
+                      )}
+                      {isBookmarked && (
+                        <span className="badge-pill-status bookmarked" title="Bookmarked">
+                          <Bookmark size={12} fill="currentColor" />
+                        </span>
+                      )}
+                      {q.difficulty && (
+                        <span className="badge-pill-diff">
+                          {q.difficulty}
+                        </span>
+                      )}
+                      <div className="accordion-toggle-icon">
+                        {isExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                      </div>
+                    </div>
+                  </header>
+
+                  {/* Accordion Body: Displays corresponding image directly below question */}
+                  {isExpanded && (
+                    <div className="accordion-item-body">
+                      {/* Corresponding Image / Infographic Container */}
+                      <div className="accordion-image-wrapper">
+                        <InfographicViewer question={q} />
+                      </div>
+
+                      {/* Action Bar Below Image: Bookmark + Complete + Details Toggle */}
+                      <div className="accordion-bottom-actions">
+                        <div className="actions-left-group">
+                          {/* Toggle optional details: Text Explanation & Code */}
+                          <button
+                            type="button"
+                            className={`btn-toggle-details ${showDetails ? 'active' : ''}`}
+                            onClick={(e) => toggleDetails(q.id, e)}
+                            title="Toggle detailed explanation & code snippet"
+                          >
+                            {showDetails ? <EyeOff size={14} /> : <Eye size={14} />}
+                            <span>{showDetails ? "Hide Explanation & Code" : "Show Explanation & Code"}</span>
+                          </button>
+                        </div>
+
+                        <div className="actions-right-group">
+                          {/* Bookmark Button */}
+                          <button
+                            type="button"
+                            className={`btn-accordion-action ${isBookmarked ? 'bookmarked' : ''}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onToggleBookmark(q.id);
+                            }}
+                            title={isBookmarked ? "Remove Bookmark" : "Save Bookmark"}
+                          >
+                            <Bookmark size={15} fill={isBookmarked ? "currentColor" : "none"} />
+                            <span>{isBookmarked ? 'Saved' : 'Bookmark'}</span>
+                          </button>
+
+                          {/* Mark Complete Button */}
+                          <button
+                            type="button"
+                            className={`btn-accordion-complete ${isCompleted ? 'completed' : ''}`}
+                            onClick={(e) => handleToggleCompleteWithConfetti(q.id, isCompleted, e)}
+                            title={isCompleted ? "Completed" : "Mark Complete"}
+                          >
+                            <Check size={15} />
+                            <span>{isCompleted ? 'Completed' : 'Mark Complete'}</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Optional Expanded Drawer for Answer, Explanation & Code */}
+                      {showDetails && (
+                        <div className="accordion-details-drawer">
+                          {/* Short Answer */}
+                          {q.shortAnswer && (
+                            <div className="drawer-section">
+                              <h4 className="drawer-heading">💡 Quick Answer:</h4>
+                              <p className="drawer-text">{q.shortAnswer}</p>
+                            </div>
+                          )}
+
+                          {/* Detailed Explanation */}
+                          {q.explanation && (
+                            <div className="drawer-section">
+                              <h4 className="drawer-heading">📘 Detailed Explanation:</h4>
+                              <div className="drawer-explanation">
+                                {q.explanation.split('\n\n').map((para, pIdx) => (
+                                  <p key={pIdx}>{para}</p>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Code Snippet */}
+                          {hasCode && (
+                            <div className="drawer-section">
+                              <div className="code-header-row">
+                                <h4 className="drawer-heading">💻 Code Example:</h4>
+                                <button
+                                  type="button"
+                                  className="btn-copy-code-sm"
+                                  onClick={(e) => handleCopyCode(codeSnippet, q.id, e)}
+                                >
+                                  {copiedCodeId === q.id ? <CheckCheck size={13} className="text-emerald-400" /> : <Copy size={13} />}
+                                  <span>{copiedCodeId === q.id ? 'Copied!' : 'Copy Code'}</span>
+                                </button>
+                              </div>
+                              <div className="clean-code-container">
+                                <pre className="clean-code-pre">
+                                  <code>{codeSnippet}</code>
+                                </pre>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Key Takeaways */}
+                          {q.takeaways && q.takeaways.length > 0 && (
+                            <div className="drawer-section">
+                              <h4 className="drawer-heading">🎯 Key Takeaways:</h4>
+                              <ul className="drawer-takeaways-list">
+                                {q.takeaways.filter(Boolean).map((t, tIdx) => (
+                                  <li key={tIdx} className="takeaway-bullet-item">
+                                    <div className="bullet-check-badge">
+                                      <Check size={11} />
+                                    </div>
+                                    <span>{t}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </article>
+              );
+            })
+          )}
+
+          {/* 3. Pagination Controls */}
+          {totalPages > 1 && (
+            <div className="simple-pagination-footer">
+              <button
+                type="button"
+                className="btn-simple-page-nav"
+                disabled={currentPage === 1}
+                onClick={() => {
+                  setCurrentPage(prev => Math.max(prev - 1, 1));
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+              >
+                ‹ Previous Page
+              </button>
+
+              <div className="page-pill-indicators">
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
+                  <button
+                    key={pageNum}
+                    type="button"
+                    className={`btn-simple-page-num ${currentPage === pageNum ? 'active' : ''}`}
+                    onClick={() => {
+                      setCurrentPage(pageNum);
+                      window.scrollTo({ top: 0, behavior: 'smooth' });
+                    }}
+                  >
+                    {pageNum}
+                  </button>
+                ))}
+              </div>
+
+              <button
+                type="button"
+                className="btn-simple-page-nav"
+                disabled={currentPage === totalPages}
+                onClick={() => {
+                  setCurrentPage(prev => Math.min(prev + 1, totalPages));
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+              >
+                Next Page ›
+              </button>
+            </div>
+          )}
         </main>
       </div>
     </div>
