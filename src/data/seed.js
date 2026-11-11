@@ -1200,7 +1200,7 @@ validate_task = PythonOperator(
   ...ADDITIONAL_QUESTIONS
 ]);
 
-const CURRENT_SEED_VERSION = 7;
+const CURRENT_SEED_VERSION = 8;
 
 function readStoredArray(key, fallback) {
   try {

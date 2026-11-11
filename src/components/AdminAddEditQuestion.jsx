@@ -70,6 +70,7 @@ export default function AdminAddEditQuestion({
 
   // Image State
   const [imageId, setImageId] = useState(editingQuestion?.imageId || null);
+  const [imageUrl, setImageUrl] = useState(editingQuestion?.imageUrl || editingQuestion?.imageSrc || '');
   const [imagePreviewUrl, setImagePreviewUrl] = useState(null);
   const [imageFileToSave, setImageFileToSave] = useState(null);
   const [errorMessage, setErrorMessage] = useState('');
@@ -117,6 +118,10 @@ export default function AdminAddEditQuestion({
           setImagePreviewUrl(blobOrUrl);
         }
       });
+    } else if (editingQuestion?.imageUrl || editingQuestion?.imageSrc) {
+      const src = editingQuestion.imageUrl || editingQuestion.imageSrc;
+      setImagePreviewUrl(src);
+      setImageUrl(src);
     }
     return () => {
       active = false;
@@ -142,6 +147,7 @@ export default function AdminAddEditQuestion({
 
     setErrorMessage('');
     setImageFileToSave(file);
+    setImageUrl('');
     const objectUrl = URL.createObjectURL(file);
     setImagePreviewUrl(objectUrl);
   };
@@ -150,6 +156,7 @@ export default function AdminAddEditQuestion({
     setImagePreviewUrl(null);
     setImageFileToSave(null);
     setImageId(null);
+    setImageUrl('');
   };
 
   // Reset form to clean default state
@@ -166,6 +173,7 @@ export default function AdminAddEditQuestion({
     setExampleCode('');
     setTakeaways(['']);
     setImageId(null);
+    setImageUrl('');
     setImagePreviewUrl(null);
     setImageFileToSave(null);
     setErrorMessage('');
@@ -245,11 +253,13 @@ export default function AdminAddEditQuestion({
           ? cleanTakeaways
           : (shortAnswer.trim() ? [shortAnswer.trim()] : (explanation.trim() ? [explanation.trim().slice(0, 160)] : [])),
         imageId: finalImageId,
+        imageUrl: imageUrl.trim() || undefined,
+        imageSrc: imageUrl.trim() || undefined,
         active: editingQuestion ? editingQuestion.active : true,
         createdAt: editingQuestion?.createdAt || new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         // keep existing infographicData if no uploaded image
-        infographicData: finalImageId ? null : editingQuestion?.infographicData
+        infographicData: (finalImageId || imageUrl.trim()) ? null : editingQuestion?.infographicData
       };
 
       if (onSaveQuestion) {
@@ -515,6 +525,34 @@ export default function AdminAddEditQuestion({
                 style={{ display: 'none' }}
               />
             </label>
+
+            {/* Direct Image URL / Public Path Input */}
+            <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <label style={{ fontSize: '0.76rem', fontWeight: 700, color: 'var(--text-muted)' }}>
+                Or Image URL / Path (CDN or /images/...):
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. /images/python/q1.png or https://..."
+                value={imageUrl}
+                onChange={(e) => {
+                  setImageUrl(e.target.value);
+                  if (e.target.value.trim()) {
+                    setImagePreviewUrl(e.target.value.trim());
+                    setImageFileToSave(null);
+                  }
+                }}
+                style={{
+                  fontSize: '0.8rem',
+                  padding: '7px 10px',
+                  borderRadius: 'var(--radius-sm)',
+                  border: '1px solid var(--border-light)',
+                  width: '100%',
+                  background: '#f8fafc',
+                  color: 'var(--text-main)'
+                }}
+              />
+            </div>
 
             <div className="indexeddb-notice">
               <p>
