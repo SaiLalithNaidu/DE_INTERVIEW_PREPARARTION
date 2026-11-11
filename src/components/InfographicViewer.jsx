@@ -352,12 +352,12 @@ export default function InfographicViewer({ question }) {
           {loadingImage ? (
             <div className="loading-image-box">
               <div className="spinner"></div>
-              <p>Loading infographic from IndexedDB...</p>
+              <p>Loading infographic...</p>
             </div>
-          ) : customImageSrc ? (
+          ) : (customImageSrc || question?.imageUrl || question?.imageSrc) ? (
             <div className="custom-image-wrapper">
               <img 
-                src={customImageSrc} 
+                src={customImageSrc || question?.imageUrl || question?.imageSrc} 
                 alt={question.question} 
                 className="uploaded-infographic-img"
               />
