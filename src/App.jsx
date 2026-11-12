@@ -1,6 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
+import FirebaseAccessScreen from './components/FirebaseAccessScreen';
 import SectionQuestionsView from './components/SectionQuestionsView';
 import AdminQuestionManagement from './components/AdminQuestionManagement';
 import AdminAddEditQuestion from './components/AdminAddEditQuestion';
@@ -23,6 +24,7 @@ import {
   SEED_QUESTIONS,
   initializeStorageIfNeeded
 } from './data/seed';
+import { firebaseConfigured } from './lib/firebaseConfig';
 
 export default function App() {
   // Initialize or migrate storage before reading application state.
@@ -34,6 +36,115 @@ export default function App() {
   const [questions, setQuestions] = useState(initialData.questions);
   const [bookmarks, setBookmarks] = useState(initialData.bookmarks);
   const [progress, setProgress] = useState(initialData.progress);
+  const [firebaseUser, setFirebaseUser] = useState(null);
+  const [cloudStatus, setCloudStatus] = useState(firebaseConfigured ? 'connecting' : 'local');
+  const [cloudError, setCloudError] = useState('');
+  const [isCloudReady, setIsCloudReady] = useState(!firebaseConfigured);
+  const [isSigningIn, setIsSigningIn] = useState(false);
+  const [authError, setAuthError] = useState('');
+
+  useEffect(() => {
+    if (!firebaseConfigured) return undefined;
+    let active = true;
+    let syncRevision = 0;
+    let unsubscribe = () => {};
+
+    const handleCloudStatus = (event) => {
+      setCloudStatus(event.detail?.status || 'error');
+      setCloudError(event.detail?.message || '');
+    };
+    window.addEventListener('dep-firebase-status', handleCloudStatus);
+
+    Promise.all([
+      import('./lib/firebase'),
+      import('firebase/auth'),
+      import('./lib/cloudSync')
+    ]).then(([firebaseModule, authModule, cloudModule]) => {
+      if (!active || !firebaseModule.auth) return;
+      unsubscribe = authModule.onAuthStateChanged(firebaseModule.auth, async (user) => {
+        if (!active) return;
+        const currentRevision = ++syncRevision;
+        setFirebaseUser(user);
+        setAuthError('');
+
+        if (!user) {
+          cloudModule.disconnectCloudPersistence();
+          setCloudStatus('signed-out');
+          setCloudError('');
+          setIsCloudReady(false);
+          return;
+        }
+
+        setCloudStatus('connecting');
+        setCloudError('');
+        setIsCloudReady(false);
+
+        try {
+          const result = await cloudModule.syncAppDataWithFirebase(initialData, user, {
+            sections: SEED_SECTIONS,
+            topics: SEED_TOPICS,
+            questions: SEED_QUESTIONS,
+            bookmarks: ['py-q1'],
+            progress: []
+          });
+          if (!active || currentRevision !== syncRevision) return;
+
+          setSections(result.data.sections);
+          setTopics(result.data.topics);
+          setQuestions(result.data.questions);
+          setBookmarks(result.data.bookmarks);
+          setProgress(result.data.progress);
+          setCloudStatus(result.pendingImageCount ? 'warning' : 'connected');
+          setCloudError(result.pendingImageCount
+            ? `${result.pendingImageCount} existing image(s) are syncing to Firebase Storage in the background.`
+            : '');
+          setIsCloudReady(true);
+        } catch (error) {
+          console.error('Firebase connection failed:', error);
+          cloudModule.disconnectCloudPersistence();
+          if (!active || currentRevision !== syncRevision) return;
+          setCloudStatus('error');
+          setCloudError(error.message || 'Firebase could not load your app data.');
+          setIsCloudReady(true);
+        }
+      });
+    }).catch((error) => {
+      if (!active) return;
+      console.error('Firebase modules could not be loaded:', error);
+      setCloudStatus('error');
+      setCloudError(error.message || 'Firebase could not be initialized.');
+    });
+
+    return () => {
+      active = false;
+      syncRevision += 1;
+      unsubscribe();
+      window.removeEventListener('dep-firebase-status', handleCloudStatus);
+    };
+  }, [initialData]);
+
+  const handleFirebaseSignIn = async () => {
+    setIsSigningIn(true);
+    setAuthError('');
+    try {
+      const { signInWithGoogle } = await import('./lib/firebase');
+      await signInWithGoogle();
+    } catch (error) {
+      setAuthError(error.message || 'Google sign-in failed.');
+    } finally {
+      setIsSigningIn(false);
+    }
+  };
+
+  const handleFirebaseSignOut = async () => {
+    try {
+      const { signOutFromFirebase } = await import('./lib/firebase');
+      await signOutFromFirebase();
+    } catch (error) {
+      setCloudStatus('error');
+      setCloudError(error.message || 'Could not sign out.');
+    }
+  };
 
   // Navigation State
   const [currentRoute, setCurrentRoute] = useState('section-python'); // default starts directly in Python section as shown in screenshot
@@ -250,6 +361,17 @@ export default function App() {
     );
   }, [questions, globalSearchQuery]);
 
+  if (firebaseConfigured && (!firebaseUser || !isCloudReady)) {
+    return (
+      <FirebaseAccessScreen
+        status={cloudStatus}
+        error={authError || cloudError}
+        busy={isSigningIn}
+        onSignIn={handleFirebaseSignIn}
+      />
+    );
+  }
+
   return (
     <div className="app-layout">
       {/* Sidebar Navigation */}
@@ -266,6 +388,10 @@ export default function App() {
         {/* Top Header */}
         <Header
           currentSection={currentSection}
+          cloudStatus={cloudStatus}
+          cloudError={cloudError}
+          firebaseUser={firebaseUser}
+          onFirebaseSignOut={firebaseConfigured ? handleFirebaseSignOut : undefined}
           globalSearchQuery={globalSearchQuery}
           onGlobalSearchChange={setGlobalSearchQuery}
           onOpenMobileMenu={() => setIsMobileSidebarOpen(true)}

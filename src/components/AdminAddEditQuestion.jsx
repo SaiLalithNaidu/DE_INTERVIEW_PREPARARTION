@@ -16,6 +16,7 @@ import {
   AlertTriangle
 } from 'lucide-react';
 import { saveImageBlob, getImageBlob, deleteImageBlob } from '../lib/store';
+import { firebaseConfigured } from '../lib/firebaseConfig';
 
 const MAX_IMAGE_SIZE_BYTES = 8 * 1024 * 1024; // 8 MB limit per requirements
 const ALLOWED_MIME_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
@@ -270,8 +271,10 @@ export default function AdminAddEditQuestion({
         onCancel();
       }
     } catch (err) {
-      console.error('Failed to save question image to IndexedDB:', err);
-      setErrorMessage('Error storing image in IndexedDB. Please try again.');
+      console.error('Failed to save question image:', err);
+      setErrorMessage(firebaseConfigured
+        ? 'Could not save the image to Firebase Storage. Check your connection and Storage setup, then try again.'
+        : 'Could not save the image to this browser. Please try again.');
     } finally {
       setIsSaving(false);
     }
@@ -556,7 +559,10 @@ export default function AdminAddEditQuestion({
 
             <div className="indexeddb-notice">
               <p>
-                <strong>Local IndexedDB Storage:</strong> Images are safely stored in your browser's IndexedDB without compression artifacts.
+                <strong>{firebaseConfigured ? 'Firebase Storage + IndexedDB:' : 'Local IndexedDB Storage:'}</strong>{' '}
+                {firebaseConfigured
+                  ? 'Images sync to your Firebase account and remain cached in this browser.'
+                  : "Images are stored in this browser's IndexedDB without compression artifacts."}
               </p>
             </div>
           </div>

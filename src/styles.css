@@ -5129,6 +5129,119 @@ input, select, textarea {
   margin-top: 10px;
 }
 
+.firebase-access-screen {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 24px;
+  background: #f8fafc;
+}
+
+.firebase-access-card {
+  width: min(100%, 440px);
+  padding: 34px;
+  border: 1px solid #e2e8f0;
+  border-radius: 20px;
+  background: #ffffff;
+  box-shadow: 0 18px 50px rgba(15, 23, 42, 0.08);
+  text-align: center;
+}
+
+.firebase-access-icon {
+  display: grid;
+  width: 52px;
+  height: 52px;
+  margin: 0 auto 18px;
+  place-items: center;
+  border-radius: 16px;
+  color: #ffffff;
+  background: #4f46e5;
+}
+
+.firebase-access-eyebrow {
+  margin: 0 0 8px;
+  color: #64748b;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+.firebase-access-card h1 {
+  margin: 0;
+  color: #0f172a;
+  font-size: 1.45rem;
+  line-height: 1.25;
+}
+
+.firebase-access-copy {
+  margin: 12px 0 22px;
+  color: #64748b;
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.firebase-access-error {
+  margin: -8px 0 18px;
+  color: #b91c1c;
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.firebase-sign-in-button {
+  width: 100%;
+  min-height: 46px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 11px;
+  color: #ffffff;
+  background: #4f46e5;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 750;
+  cursor: pointer;
+  transition: background 150ms ease, transform 150ms ease;
+}
+
+.firebase-sign-in-button:hover:not(:disabled) {
+  background: #4338ca;
+  transform: translateY(-1px);
+}
+
+.firebase-sign-in-button:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.firebase-access-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  min-height: 46px;
+  color: #4f46e5;
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.firebase-loading-spinner {
+  animation: firebase-spinner 900ms linear infinite;
+}
+
+.firebase-access-note {
+  margin: 18px 0 0;
+  color: #94a3b8;
+  font-size: 0.72rem;
+  line-height: 1.5;
+}
+
+.firebase-sign-out-button {
+  margin-right: 8px;
+}
+
+@keyframes firebase-spinner {
+  to { transform: rotate(360deg); }
+}
+
 /* Bottom Action Bar */
 .accordion-bottom-actions {
   display: flex;

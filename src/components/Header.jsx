@@ -14,7 +14,8 @@ import {
   Settings, 
   Video,
   Layers,
-  Bookmark
+  Bookmark,
+  LogOut
 } from 'lucide-react';
 
 const ICON_MAP = {
@@ -40,7 +41,11 @@ export default function Header({
   onOpenMobileMenu,
   onNavigate,
   bookmarkCount = 0,
-  progressCount = 0
+  progressCount = 0,
+  cloudStatus = 'local',
+  cloudError = '',
+  firebaseUser = null,
+  onFirebaseSignOut
 }) {
   const [showNotifications, setShowNotifications] = useState(false);
 
@@ -68,6 +73,24 @@ export default function Header({
   };
 
   const SectionIcon = ICON_MAP[currentSection?.id] || Layers;
+  const cloudStatusTitle = {
+    local: 'Firebase not configured',
+    connecting: 'Connecting to Firebase',
+    connected: 'Firebase connected',
+    warning: 'Firebase connected with image warnings',
+    error: 'Firebase sync issue',
+    'signed-out': 'Sign in to Firebase'
+  }[cloudStatus] || 'Storage status';
+  const cloudStatusMessage = cloudError || ({
+    local: 'This browser is saving data locally until Firebase is configured.',
+    connecting: 'Connecting your account and loading its data.',
+    connected: 'Questions, images, bookmarks, and progress are synced to your account.',
+    warning: 'Some existing browser images still need to be copied to Firebase Storage.',
+    error: 'Your latest changes remain in this browser while Firebase is unavailable.',
+    'signed-out': 'Sign in to load your Firebase data.'
+  }[cloudStatus] || '');
+  const userInitial = (firebaseUser?.displayName || firebaseUser?.email || 'SK').trim().charAt(0).toUpperCase();
+  const userTitle = firebaseUser?.email || firebaseUser?.displayName || 'Data Engineer Candidate';
 
   return (
     <header className="app-header">
@@ -138,8 +161,8 @@ export default function Header({
                 <div className="popover-item">
                   <span className="pop-icon">🚀</span>
                   <div>
-                    <p className="pop-msg">Offline Storage Ready</p>
-                    <span className="pop-time">IndexedDB + localStorage active</span>
+                    <p className="pop-msg">{cloudStatusTitle}</p>
+                    <span className="pop-time">{cloudStatusMessage}</span>
                   </div>
                 </div>
                 <div className="popover-item">
@@ -155,8 +178,19 @@ export default function Header({
         </div>
 
         {/* User Avatar */}
-        <div className="user-profile-avatar" title="Data Engineer Candidate (SK)">
-          <span>SK</span>
+        {onFirebaseSignOut && (
+          <button
+            type="button"
+            className="header-icon-btn firebase-sign-out-button"
+            title="Sign out of Firebase"
+            aria-label="Sign out of Firebase"
+            onClick={onFirebaseSignOut}
+          >
+            <LogOut size={17} />
+          </button>
+        )}
+        <div className="user-profile-avatar" title={userTitle}>
+          <span>{userInitial}</span>
         </div>
       </div>
     </header>
