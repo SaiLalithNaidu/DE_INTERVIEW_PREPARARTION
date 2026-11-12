@@ -378,6 +378,9 @@ export default function App() {
       <Sidebar
         sections={sections}
         currentRoute={currentRoute}
+        cloudStatus={cloudStatus}
+        cloudError={cloudError}
+        firebaseUser={firebaseUser}
         onNavigate={handleNavigate}
         isMobileOpen={isMobileSidebarOpen}
         onCloseMobile={() => setIsMobileSidebarOpen(false)}

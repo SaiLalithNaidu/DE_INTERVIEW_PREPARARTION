@@ -35,10 +35,30 @@ const ICON_MAP = {
 export default function Sidebar({
   sections = [],
   currentRoute,
+  cloudStatus = 'local',
+  cloudError = '',
+  firebaseUser = null,
   onNavigate,
   isMobileOpen,
   onCloseMobile
 }) {
+  const syncLabel = firebaseUser
+    ? ({
+        connecting: 'Connecting to Firebase',
+        connected: 'Firebase synced',
+        warning: 'Images syncing',
+        error: 'Cloud sync issue'
+      }[cloudStatus] || 'Firebase connected')
+    : 'Offline ready';
+  const syncMessage = firebaseUser
+    ? cloudError || ({
+        connecting: 'Loading your Firebase data…',
+        connected: 'Sections, topics, questions, answers, bookmarks, progress, and image files sync to Firebase. This browser keeps an offline cache.',
+        warning: 'Your question data is synced. Some existing images are still uploading to Firebase Storage.',
+        error: 'Your browser keeps a local copy while Firebase sync needs attention.'
+      }[cloudStatus] || 'Your app data syncs to your Firebase account.')
+    : 'This browser keeps a local cache. Sign in to sync app data with Firebase.';
+
   return (
     <>
       {/* Mobile backdrop */}
@@ -106,12 +126,12 @@ export default function Sidebar({
 
         {/* Bottom Quick Status */}
         <div className="sidebar-footer">
-          <div className="pro-tip-card">
+          <div className={`pro-tip-card cloud-sync-card ${firebaseUser ? `cloud-${cloudStatus}` : 'cloud-local'}`}>
             <div className="tip-header">
-              <Sparkles size={14} className="text-yellow-400" />
-              <span>Offline Ready</span>
+              {firebaseUser ? <Cloud size={14} /> : <Sparkles size={14} className="text-yellow-400" />}
+              <span>{syncLabel}</span>
             </div>
-            <p className="tip-body">Stored in browser localStorage & IndexedDB. Zero network required.</p>
+            <p className="tip-body">{syncMessage}</p>
           </div>
         </div>
       </aside>
